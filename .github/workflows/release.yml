@@ -31,7 +31,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with: { targets: ${{ matrix.target }} }
+        with:
+          targets: ${{ matrix.target }}
       - name: Build binary
         run: cargo build --release --target ${{ matrix.target }}
       - name: Package Unix archive
@@ -74,13 +75,16 @@ jobs:
           Compress-Archive -Path stage/vram-fieldtest.exe -DestinationPath vram-fieldtest-${{ matrix.label }}.zip
           (Get-FileHash vram-fieldtest-${{ matrix.label }}.zip -Algorithm SHA256).Hash.ToLower() + '  vram-fieldtest-${{ matrix.label }}.zip' | Set-Content vram-fieldtest-${{ matrix.label }}.sha256
       - uses: actions/upload-artifact@v4
-        with: { name: ${{ matrix.label }}, path: 'vram-fieldtest-*' }
+        with:
+          name: ${{ matrix.label }}
+          path: vram-fieldtest-*
   publish:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
-        with: { path: release }
+        with:
+          path: release
       - name: Create checksums and manifest
         working-directory: release
         run: |
@@ -88,4 +92,5 @@ jobs:
           tag="${GITHUB_REF_NAME:-v0.1.0}"
           printf '{"version":"%s","assets":{"linux-x86_64":"https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/%s/vram-fieldtest-linux-x86_64.tar.gz","windows-x86_64":"https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/%s/vram-fieldtest-windows-x86_64.zip","macos-x86_64":"https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/%s/vram-fieldtest-macos-x86_64.tar.gz","macos-aarch64":"https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/%s/vram-fieldtest-macos-aarch64.tar.gz"}}\n' "$tag" "$tag" "$tag" "$tag" "$tag" > latest.json
       - uses: softprops/action-gh-release@v2
-        with: { files: 'release/**' }
+        with:
+          files: release/**
