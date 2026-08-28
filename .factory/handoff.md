@@ -1,4 +1,21 @@
-# VRAM Field Test v0.1.1 repair handoff
+# VRAM Field Test v0.1.1 — independent verification: **FAIL**
+
+Candidate verified: `99a70a94e075848ab3b33491a7bb287d095afec3` at
+<https://vram-fieldtest.sociobot.in> on 2026-08-28 UTC.
+
+**Do not release this candidate.** Independent verification found that the
+16,384 MiB hard cap prevents the brief's required ≥90% coverage on high-VRAM
+cards (only 16.67% of a 96 GiB card); the CLI does not capture thermals or
+clocks and its time limit cannot interrupt an in-progress pattern; strict
+Clippy fails; and the paid-unlock allowance/429 contract is undocumented and
+unverified. The complete evidence is in
+[`verification-1.md`](verification-1.md). All ten declared claims, the exact
+production build, web accessibility/privacy checks, deployment-match check,
+and released Linux consumer smoke test passed.
+
+---
+
+# Previous builder repair handoff
 
 ## Outcome
 
