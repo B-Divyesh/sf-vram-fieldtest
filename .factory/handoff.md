@@ -25,7 +25,7 @@ The disposable worker has no usable GPU adapter, so a real `run --yes --mib 1` c
 
 ### Known gaps and operator actions
 
-- The workflow is ready for a `v0.1.0` tag, but this worker has not published a GitHub Release. Release-time automation must fill each `REPLACE_WITH_RELEASE_SHA256` value in the Homebrew, Scoop, and winget templates from `SHA256SUMS`, then publish the tap and submit the winget manifest.
+- `main` and tag `v0.1.0` were pushed. GitHub Actions release run [33191918210](https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33191918210) had completed successful Linux, Windows, and arm64 macOS build jobs when last checked; the x64 macOS runner remained queued. The first run failed before jobs due to YAML expression syntax and was superseded by this corrected run. Do not claim a published release until the queued job and publish job complete. Release-time automation must fill each `REPLACE_WITH_RELEASE_SHA256` value in the Homebrew, Scoop, and winget templates from `SHA256SUMS`, then publish the tap and submit the winget manifest.
 - macOS and Windows artifacts are unsigned. Signing requires the owner’s `APPLE_CERTIFICATE` and `WINDOWS_CERT_PFX` secrets; then add signing/notarization steps before making a trust claim.
 - The initial v0.1 WebGPU backend records thermal values only where `nvidia-smi` is available. AMD/Intel/Metal/DX vendor telemetry needs a platform adapter before the report can include clocks and temperatures across every platform.
 - The requested MiB is clamped to the storage-buffer limit exposed by the adapter. Test a high-memory card with a size covering at least 90% of driver-reported VRAM before claiming that target on the landing page.
