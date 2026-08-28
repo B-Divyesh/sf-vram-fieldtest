@@ -31,6 +31,7 @@ The first screen reads aloud in one breath: “Test GPU memory before money chan
 | The site stores a license token only when you add one. | 11 | — |
 | Use one command. | 3 | — |
 | Check the checksum. | 3 | — |
+| Windows and macOS packages are unsigned. | 6 | — |
 | Downloads are being published. | 4 | — |
 | One-time license. | 2 | — |
 | Turn local report JSON into a printable cover and batch labels. | 11 | — |

@@ -108,3 +108,12 @@ test('release workflow covers the required native assets', () => {
   }
   assert.doesNotMatch(workflow, /macos-13/);
 });
+
+test('service worker update policy matches the package version', () => {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  const worker = readFileSync('site/public/sw.js', 'utf8');
+  assert.match(worker, new RegExp(`v${pkg.version.replaceAll('.', '\\.')}`));
+  assert.match(worker, /keys\.filter\(key => key !== CACHE\).*caches\.delete/);
+  assert.match(worker, /self\.skipWaiting\(\)/);
+  assert.match(worker, /self\.clients\.claim\(\)/);
+});

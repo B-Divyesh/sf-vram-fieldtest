@@ -4,6 +4,9 @@ version = "0.1.1"
 edition = "2021"
 description = "A bounded, repeatable GPU memory field test"
 license = "MIT"
+homepage = "https://vram-fieldtest.sociobot.in"
+repository = "https://github.com/B-Divyesh/sf-vram-fieldtest"
+readme = "README.md"
 
 [[bin]]
 name = "vram-fieldtest"
