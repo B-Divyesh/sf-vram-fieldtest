@@ -8,4 +8,8 @@ nodeArgs.push('site/tests/claims.test.mjs');
 let result = spawnSync(process.execPath, nodeArgs, { stdio: 'inherit' });
 if (result.status) process.exit(result.status);
 result = spawnSync('cargo', ['test'], { stdio: 'inherit' });
+if (result.status) process.exit(result.status);
+const playwrightArgs = ['node_modules/@playwright/test/cli.js', 'test', '--pass-with-no-tests'];
+if (pattern) playwrightArgs.push('--grep', pattern);
+result = spawnSync(process.execPath, playwrightArgs, { stdio: 'inherit' });
 process.exit(result.status ?? 1);

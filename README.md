@@ -6,7 +6,7 @@ VRAM Field Test is for people who need repeatable evidence from a GPU memory-pat
 
 ## Try the sample
 
-The web demo is at [vram-fieldtest.sociobot.in/demo](https://vram-fieldtest.sociobot.in/demo). It shows bundled sample data.
+The web demo is at [vram-fieldtest.sociobot.in/demo](https://vram-fieldtest.sociobot.in/demo). It shows bundled sample data and works offline after the first visit.
 
 The CLI demo needs no GPU and no network:
 
@@ -18,7 +18,7 @@ It prints the temporary folder containing `report.json` and `report.html`. This 
 
 ## Install
 
-After a release is published:
+On Linux or macOS:
 
 ```sh
 curl -fsSL https://vram-fieldtest.sociobot.in/install.sh | sh
@@ -30,9 +30,22 @@ On PowerShell:
 irm https://vram-fieldtest.sociobot.in/install.ps1 | iex
 ```
 
-Both installers read the release manifest, download the matching archive, verify its SHA-256 checksum, and place the binary on your path. Windows and macOS builds are unsigned. On macOS, use right-click → Open if Gatekeeper blocks an unsigned binary.
+Both installers read the release metadata, download the matching archive, verify its SHA-256 checksum, and place the binary on your path. Windows and macOS builds are unsigned. On macOS, use right-click → Open if Gatekeeper blocks an unsigned binary.
 
-Homebrew is prepared as `brew install B-Divyesh/vram-fieldtest/vram-fieldtest` once the tap is published. Scoop and winget manifests are in this repository for release checksum updates and submission.
+Homebrew:
+
+```sh
+brew install B-Divyesh/vram-fieldtest/vram-fieldtest
+```
+
+Scoop:
+
+```powershell
+scoop bucket add vram-fieldtest https://github.com/B-Divyesh/sf-vram-fieldtest
+scoop install vram-fieldtest/vram-fieldtest
+```
+
+The winget manifest is ready under `winget/` for owner submission.
 
 ## Run a test
 
@@ -50,7 +63,7 @@ vram-fieldtest run --yes --mib 512 --output ./gpu-record
 
 `--yes` is explicit consent for a compute memory test. `--mib` is bounded to 16,384 MiB in v0.1; start at 256 MiB. The result records actual tested MiB and, when the OS exposes it, detected VRAM and coverage. A failed pattern exits with code 2. Use `--json` for a machine-readable final summary.
 
-The tool runs three patterns: solid `AA`, solid `55`, and a walking address value. It allocates a WebGPU storage buffer, writes each pattern on the selected adapter, copies it back, then checks every word. It keeps no telemetry; reports only write to the directory you select.
+The tool runs three patterns: solid `AA`, solid `55`, and an address XOR value. It allocates a WebGPU storage buffer, writes each pattern on the selected adapter, copies it back, then checks every word. It keeps no telemetry; reports only write to the directory you select.
 
 ## Develop and verify
 
@@ -63,6 +76,12 @@ npm run build
 
 `npm run build:site` produces the static site at `dist/site` with `index.html` at that root. `npm run build` also produces the release binary at `target/release/vram-fieldtest`.
 
+The clean-clone gate uses npm 10.9.8:
+
+```sh
+npm ci && npm test && npm run build
+```
+
 Claim checks can run one at a time:
 
 ```sh
@@ -71,4 +90,4 @@ npm test -- --grep @claim:demo-report
 
 ## License and privacy
 
-MIT. See [LICENSE](LICENSE). The site has [privacy](https://vram-fieldtest.sociobot.in/privacy) and [terms](https://vram-fieldtest.sociobot.in/terms) pages. The optional $19 Report Kit is a one-time Sociobot license; it never gates the core test or report export.
+MIT. See [LICENSE](LICENSE). The site has [privacy](https://vram-fieldtest.sociobot.in/privacy) and [terms](https://vram-fieldtest.sociobot.in/terms) pages. The optional $19 Report Kit reads a local report and creates a printable cover and batch labels. It never gates the core test or report export.

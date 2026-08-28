@@ -1,12 +1,30 @@
 name: release
+
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+
 permissions:
   contents: write
+
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Test and build
+        run: npm test && npm run build
+
   build:
+    needs: verify
     strategy:
       fail-fast: false
       matrix:
@@ -14,19 +32,15 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             label: linux-x86_64
-            archive: tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             label: windows-x86_64
-            archive: zip
-          - os: macos-13
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             label: macos-x86_64
-            archive: tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
             label: macos-aarch64
-            archive: tar.gz
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +48,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - name: Build binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --target ${{ matrix.target }}
       - name: Package Unix archive
         if: runner.os != 'Windows'
         shell: bash
@@ -42,30 +56,34 @@ jobs:
           mkdir stage
           cp target/${{ matrix.target }}/release/vram-fieldtest stage/
           tar -C stage -czf vram-fieldtest-${{ matrix.label }}.tar.gz vram-fieldtest
-          shasum -a 256 vram-fieldtest-${{ matrix.label }}.tar.gz > vram-fieldtest-${{ matrix.label }}.sha256
+          shasum -a 256 vram-fieldtest-${{ matrix.label }}.tar.gz > vram-fieldtest-${{ matrix.label }}.tar.gz.sha256
       - name: Build macOS installer package
         if: runner.os == 'macOS'
         shell: bash
         run: |
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
           mkdir -p pkgroot/usr/local/bin
           cp target/${{ matrix.target }}/release/vram-fieldtest pkgroot/usr/local/bin/
-          pkgbuild --root pkgroot --identifier in.sociobot.vram-fieldtest --version "${GITHUB_REF_NAME#v}" vram-fieldtest-${{ matrix.label }}.pkg
+          pkgbuild --root pkgroot --identifier in.sociobot.vram-fieldtest --version "$version" vram-fieldtest-${{ matrix.label }}.pkg
           shasum -a 256 vram-fieldtest-${{ matrix.label }}.pkg > vram-fieldtest-${{ matrix.label }}.pkg.sha256
       - name: Build Linux deb and rpm
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
           mkdir -p debroot/DEBIAN debroot/usr/bin
           cp target/${{ matrix.target }}/release/vram-fieldtest debroot/usr/bin/
           printf 'Package: vram-fieldtest\nVersion: %s\nArchitecture: amd64\nMaintainer: Sociobot\nDescription: Bounded GPU memory pattern test\n' "$version" > debroot/DEBIAN/control
           dpkg-deb --build debroot "vram-fieldtest_${version}_amd64.deb"
-          sudo apt-get update && sudo apt-get install -y rpm
+          sudo apt-get update
+          sudo apt-get install -y rpm
           mkdir -p rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
           cp target/${{ matrix.target }}/release/vram-fieldtest rpmbuild/SOURCES/
           printf 'Name: vram-fieldtest\nVersion: %s\nRelease: 1\nSummary: Bounded GPU memory pattern test\nLicense: MIT\nBuildArch: x86_64\n%%description\nBounded GPU memory pattern test.\n%%install\nmkdir -p %%{buildroot}/usr/bin\ninstall -m 755 %%{_sourcedir}/vram-fieldtest %%{buildroot}/usr/bin/vram-fieldtest\n%%files\n/usr/bin/vram-fieldtest\n' "$version" > rpmbuild/SPECS/vram-fieldtest.spec
           rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpmbuild/SPECS/vram-fieldtest.spec
           cp rpmbuild/RPMS/x86_64/*.rpm .
+          sha256sum vram-fieldtest_*.deb > vram-fieldtest_${version}_amd64.deb.sha256
+          sha256sum vram-fieldtest-*.rpm > vram-fieldtest-${version}-1.x86_64.rpm.sha256
       - name: Package Windows archive
         if: runner.os == 'Windows'
         shell: pwsh
@@ -73,24 +91,35 @@ jobs:
           New-Item -ItemType Directory stage
           Copy-Item target/${{ matrix.target }}/release/vram-fieldtest.exe stage/
           Compress-Archive -Path stage/vram-fieldtest.exe -DestinationPath vram-fieldtest-${{ matrix.label }}.zip
-          (Get-FileHash vram-fieldtest-${{ matrix.label }}.zip -Algorithm SHA256).Hash.ToLower() + '  vram-fieldtest-${{ matrix.label }}.zip' | Set-Content vram-fieldtest-${{ matrix.label }}.sha256
+          (Get-FileHash vram-fieldtest-${{ matrix.label }}.zip -Algorithm SHA256).Hash.ToLower() + '  vram-fieldtest-${{ matrix.label }}.zip' | Set-Content vram-fieldtest-${{ matrix.label }}.zip.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.label }}
-          path: vram-fieldtest-*
+          path: |
+            vram-fieldtest-*
+            vram-fieldtest_*
+
   publish:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: release
-      - name: Create checksums and manifest
-        working-directory: release
+          merge-multiple: true
+      - name: Create checksums and release manifest
+        id: metadata
+        shell: bash
         run: |
-          find . -name '*.sha256' -exec cat {} \; > SHA256SUMS
-          tag="${GITHUB_REF_NAME:-v0.1.0}"
-          printf '{"version":"%s","assets":{"linux-x86_64":"https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/%s/vram-fieldtest-linux-x86_64.tar.gz","windows-x86_64":"https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/%s/vram-fieldtest-windows-x86_64.zip","macos-x86_64":"https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/%s/vram-fieldtest-macos-x86_64.tar.gz","macos-aarch64":"https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/%s/vram-fieldtest-macos-aarch64.tar.gz"}}\n' "$tag" "$tag" "$tag" "$tag" "$tag" > latest.json
+          cat release/*.sha256 | LC_ALL=C sort -k2 > release/SHA256SUMS
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
+          tag="v${version}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}"
+          printf '{"version":"%s","assets":{"linux-x86_64":"%s/vram-fieldtest-linux-x86_64.tar.gz","linux-deb":"%s/vram-fieldtest_%s_amd64.deb","linux-rpm":"%s/vram-fieldtest-%s-1.x86_64.rpm","windows-x86_64":"%s/vram-fieldtest-windows-x86_64.zip","macos-x86_64":"%s/vram-fieldtest-macos-x86_64.tar.gz","macos-aarch64":"%s/vram-fieldtest-macos-aarch64.tar.gz","macos-x86_64-pkg":"%s/vram-fieldtest-macos-x86_64.pkg","macos-aarch64-pkg":"%s/vram-fieldtest-macos-aarch64.pkg"}}\n' "$version" "$base" "$base" "$version" "$base" "$version" "$base" "$base" "$base" "$base" "$base" > release/latest.json
       - uses: softprops/action-gh-release@v2
         with:
-          files: release/**
+          tag_name: ${{ steps.metadata.outputs.tag }}
+          generate_release_notes: true
+          files: release/*

@@ -1,23 +1,72 @@
 [
   {
     "id": "demo-report",
-    "claim": "Demo writes bundled JSON and a one-page report.",
+    "claim": "The CLI demo writes bundled JSON and a print-ready HTML report.",
     "where": "Demo page, README",
     "test": "npm test -- --grep @claim:demo-report",
-    "sandbox": "fresh checkout; vram-fieldtest demo --json; assert report.json and report.html"
+    "sandbox": "fresh checkout; run the CLI demo; parse report.json and assert report.html plus all three patterns"
   },
   {
     "id": "demo-sample",
-    "claim": "Demo uses bundled sample data and no network.",
+    "claim": "The CLI demo uses bundled sample data in a temporary folder without a network dependency.",
     "where": "Demo page, README",
     "test": "npm test -- --grep @claim:demo-sample",
-    "sandbox": "fresh checkout; inspect demo command path and run it in a temporary directory"
+    "sandbox": "fresh checkout; run the compiled demo behind failing proxy variables; assert its local files"
+  },
+  {
+    "id": "cli-local",
+    "claim": "The CLI makes no network request and sends no telemetry.",
+    "where": "Landing privacy section, privacy page, README",
+    "test": "npm test -- --grep @claim:cli-local",
+    "sandbox": "inspect the Rust source and complete dependency tree for network or telemetry clients"
+  },
+  {
+    "id": "safety-consent",
+    "claim": "A real GPU run requires explicit --yes consent.",
+    "where": "README, landing protocol",
+    "test": "npm test -- --grep @claim:safety-consent",
+    "sandbox": "invoke a real run without consent and assert it stops before opening an adapter"
+  },
+  {
+    "id": "safety-cap",
+    "claim": "Requested memory is capped at 16,384 MiB.",
+    "where": "README",
+    "test": "npm test -- --grep @claim:safety-cap",
+    "sandbox": "request 16,385 MiB with consent and assert rejection before GPU access"
+  },
+  {
+    "id": "installer-checksum",
+    "claim": "The shell installer verifies SHA-256 before placing the binary on PATH.",
+    "where": "Landing install section, README",
+    "test": "npm test -- --grep @claim:installer-checksum",
+    "sandbox": "serve a fixture release archive and checksum locally; run installer; assert installed bytes"
+  },
+  {
+    "id": "release-download",
+    "claim": "The landing page selects a published archive for the visitor's platform.",
+    "where": "Landing install section",
+    "test": "npm test -- --grep @claim:release-download",
+    "sandbox": "mock GitHub's CORS API with a Linux release and assert the rendered asset URL and version"
   },
   {
     "id": "site-offline",
-    "claim": "The demo report is available without a release download.",
-    "where": "Demo page",
+    "claim": "The demo page works offline after the first visit.",
+    "where": "Demo page, README",
     "test": "npm test -- --grep @claim:site-offline",
-    "sandbox": "fresh static site; inspect isolated demo route assets"
+    "sandbox": "fresh browser context; load /demo; wait for service worker; go offline and reload"
+  },
+  {
+    "id": "demo-privacy",
+    "claim": "The browser demo uses sample data and makes only same-origin requests.",
+    "where": "Demo banner, demo documentation",
+    "test": "npm test -- --grep @claim:demo-privacy",
+    "sandbox": "fresh browser with a real-license sentinel; capture the entire demo request stream"
+  },
+  {
+    "id": "report-kit-output",
+    "claim": "Report Kit reads local report JSON and creates a printable cover with three batch labels.",
+    "where": "Landing paid tier, Report Kit page",
+    "test": "npm test -- --grep @claim:report-kit-output",
+    "sandbox": "seed a cached valid fixture license; upload bundled report JSON; assert cover, labels, and no verification request"
   }
 ]

@@ -1,11 +1,21 @@
 {
   "name": "vram-fieldtest-site",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "packageManager": "npm@10.9.8",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build:site": "node site/build.mjs",
     "build": "npm run build:site && cargo build --release",
     "test": "node site/test-runner.mjs",
+    "test:browser": "playwright test",
     "dev": "node site/dev.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
+    "@playwright/test": "1.58.2",
+    "playwright-core": "1.58.2"
   }
 }

@@ -1,9 +1,9 @@
 {
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bounded GPU memory pattern test with a local report.",
   "homepage": "https://vram-fieldtest.sociobot.in",
   "license": "MIT",
-  "url": "https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.0/vram-fieldtest-windows-x86_64.zip",
+  "url": "https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.1/vram-fieldtest-windows-x86_64.zip",
   "hash": "REPLACE_WITH_RELEASE_SHA256",
   "bin": "vram-fieldtest.exe"
 }
