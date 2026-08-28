@@ -1,0 +1,9 @@
+{
+  "schema": "vram-fieldtest/report-1", "tool_version": "0.1.0", "started_at": "2026-08-28T12:00:00Z", "duration_ms": 8420,
+  "host": {"os":"linux","hostname":"sample-bench"},
+  "adapter": {"name":"Example GPU 12 GB","backend":"portable host-visible safety pass","detected_vram_mib":12288,"source":"sample driver record"},
+  "limits": {"requested_mib":11520,"tested_mib":11520,"detected_vram_mib":12288,"coverage_percent":93.75,"thermal_limit_c":85,"max_seconds":180},
+  "patterns": [{"name":"solid AA","bytes":4026531840,"mismatches":0,"status":"pass"},{"name":"solid 55","bytes":4026531840,"mismatches":0,"status":"pass"},{"name":"walking address","bytes":4026531840,"mismatches":0,"status":"pass"}],
+  "verdict":{"status":"pass","summary":"No mismatches in 11,520 MiB across 3 patterns."},
+  "notes":["Sample report only. Demo data is not a result from your GPU.","A pass is evidence for this bounded pattern run. It does not certify every GPU fault."]
+}

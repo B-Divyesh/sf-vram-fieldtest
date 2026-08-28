@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://vram-fieldtest.sociobot.in/sitemap.xml

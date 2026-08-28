@@ -1,0 +1,11 @@
+import { spawnSync } from 'node:child_process';
+const args = process.argv.slice(2);
+const grepAt = args.indexOf('--grep');
+const pattern = grepAt >= 0 ? args[grepAt + 1] : '';
+const nodeArgs = ['--test'];
+if (pattern) nodeArgs.push('--test-name-pattern', pattern);
+nodeArgs.push('site/tests/claims.test.mjs');
+let result = spawnSync(process.execPath, nodeArgs, { stdio: 'inherit' });
+if (result.status) process.exit(result.status);
+result = spawnSync('cargo', ['test'], { stdio: 'inherit' });
+process.exit(result.status ?? 1);

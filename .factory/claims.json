@@ -1,0 +1,23 @@
+[
+  {
+    "id": "demo-report",
+    "claim": "Demo writes bundled JSON and a one-page report.",
+    "where": "Demo page, README",
+    "test": "npm test -- --grep @claim:demo-report",
+    "sandbox": "fresh checkout; vram-fieldtest demo --json; assert report.json and report.html"
+  },
+  {
+    "id": "demo-sample",
+    "claim": "Demo uses bundled sample data and no network.",
+    "where": "Demo page, README",
+    "test": "npm test -- --grep @claim:demo-sample",
+    "sandbox": "fresh checkout; inspect demo command path and run it in a temporary directory"
+  },
+  {
+    "id": "site-offline",
+    "claim": "The demo report is available without a release download.",
+    "where": "Demo page",
+    "test": "npm test -- --grep @claim:site-offline",
+    "sandbox": "fresh static site; inspect isolated demo route assets"
+  }
+]

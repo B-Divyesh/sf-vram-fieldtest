@@ -1,0 +1,68 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            label: linux-x86_64
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x86_64
+            archive: zip
+          - os: macos-13
+            target: x86_64-apple-darwin
+            label: macos-x86_64
+            archive: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-aarch64
+            archive: tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: ${{ matrix.target }} }
+      - name: Build binary
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Package Unix archive
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir stage
+          cp target/${{ matrix.target }}/release/vram-fieldtest stage/
+          tar -C stage -czf vram-fieldtest-${{ matrix.label }}.tar.gz vram-fieldtest
+          shasum -a 256 vram-fieldtest-${{ matrix.label }}.tar.gz > vram-fieldtest-${{ matrix.label }}.sha256
+      - name: Package Windows archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory stage
+          Copy-Item target/${{ matrix.target }}/release/vram-fieldtest.exe stage/
+          Compress-Archive -Path stage/vram-fieldtest.exe -DestinationPath vram-fieldtest-${{ matrix.label }}.zip
+          (Get-FileHash vram-fieldtest-${{ matrix.label }}.zip -Algorithm SHA256).Hash.ToLower() + '  vram-fieldtest-${{ matrix.label }}.zip' | Set-Content vram-fieldtest-${{ matrix.label }}.sha256
+      - uses: actions/upload-artifact@v4
+        with: { name: ${{ matrix.label }}, path: 'vram-fieldtest-*' }
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: release }
+      - name: Create checksums and manifest
+        working-directory: release
+        run: |
+          find . -name '*.sha256' -exec cat {} \; > SHA256SUMS
+          tag="${GITHUB_REF_NAME:-v0.1.0}"
+          printf '{"version":"%s","assets":{"linux-x86_64":"vram-fieldtest-linux-x86_64.tar.gz","windows-x86_64":"vram-fieldtest-windows-x86_64.zip","macos-x86_64":"vram-fieldtest-macos-x86_64.tar.gz","macos-aarch64":"vram-fieldtest-macos-aarch64.tar.gz"}}\n' "$tag" > latest.json
+      - uses: softprops/action-gh-release@v2
+        with: { files: 'release/**' }

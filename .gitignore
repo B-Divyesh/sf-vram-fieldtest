@@ -1,6 +1,7 @@
+/target/
+/dist/
 node_modules/
-dist/
-.env
-*.log
-graphify-out/
-.DS_Store
+/graphify-out/
+/site/public/hero-vram.png
+/site/public/hero-vram.webp
+/site/public/hero-vram-68.webp

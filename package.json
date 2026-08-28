@@ -1,0 +1,11 @@
+{
+  "name": "vram-fieldtest-site",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build:site": "node site/build.mjs",
+    "build": "npm run build:site && cargo build --release",
+    "test": "node site/test-runner.mjs",
+    "dev": "node site/dev.mjs"
+  }
+}
