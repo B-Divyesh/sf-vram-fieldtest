@@ -291,11 +291,14 @@ test('release-facing versions stay synchronized', () => {
     assert.equal(data.version, pkg.version);
     assert.match(data.url, new RegExp(`/v${pkg.version.replaceAll('.', '\\.')}\/`));
     assert.match(data.hash, /^[a-f0-9]{64}$/);
+    assert.doesNotMatch(data.hash, /^0+$/);
   }
   const formula = readFileSync('Formula/vram-fieldtest.rb', 'utf8');
   assert.match(formula, new RegExp(`version "${pkg.version.replaceAll('.', '\\.')}"`));
   assert.equal((formula.match(/sha256 "[a-f0-9]{64}"/g) || []).length, 2);
+  assert.doesNotMatch(formula, /sha256 "0{64}"/);
   const winget = readFileSync('winget/vram-fieldtest/vram-fieldtest.yaml', 'utf8');
   assert.match(winget, new RegExp(`PackageVersion: ${pkg.version.replaceAll('.', '\\.')}`));
   assert.match(winget, /InstallerSha256: [A-F0-9]{64}/);
+  assert.doesNotMatch(winget, /InstallerSha256: 0{64}/);
 });

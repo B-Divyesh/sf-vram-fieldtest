@@ -50,10 +50,10 @@
   },
   {
     "id": "release-provenance",
-    "claim": "Release publication records the source commit and runs the 96 GiB plan command on the staged and downloaded archive.",
+    "claim": "Release publication records the exact tagged source commit, and runs the 96 GiB plan on the staged and downloaded archive.",
     "where": "README release process",
     "test": "npm test -- --grep @claim:release-provenance",
-    "sandbox": "inspect the release workflow for the exact staged and post-publication plan checks, checksum verification, and source commit assertion"
+    "sandbox": "inspect the release workflow for tag-to-version/source equality, non-publishing rehearsals, deterministic archives, staged and downloaded plan checks, checksum verification, and source commit assertions"
   },
   {
     "id": "site-offline",

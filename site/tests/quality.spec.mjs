@@ -29,6 +29,16 @@ test('@claim:release-download landing picks a real platform release asset', asyn
   await expect(page.getByText('v0.1.3 · 2 MB')).toBeVisible();
 });
 
+test('release update replaces a fresh cache entry from the previous version', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('vram:release', JSON.stringify({
+    at: Date.now(),
+    data: { tag_name: 'v0.1.2', assets: [] }
+  })));
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Download for windows' })).toHaveAttribute('href', /v0\.1\.3\//);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('vram:release')).data.tag_name)).toBe('v0.1.3');
+});
+
 test('regression: landing refuses an expected release tag from another commit', async ({ page }) => {
   await page.unroute('https://api.github.com/repos/**/git/ref/tags/**');
   await page.route('https://api.github.com/repos/**/git/ref/tags/**', route => route.fulfill({ json: { object: { type: 'commit', sha: '0'.repeat(40) } } }));

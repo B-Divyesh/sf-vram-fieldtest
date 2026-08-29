@@ -32,7 +32,7 @@ irm https://vram-fieldtest.sociobot.in/install.ps1 | iex
 
 Both installers read the release metadata, download the matching archive, verify its SHA-256 checksum, and place the binary on your path. Windows and macOS builds are unsigned. On macOS, use right-click → Open if Gatekeeper blocks an unsigned binary.
 
-The site and installers accept only the release version they were built for. Each release includes `PROVENANCE.json` with its source commit and the 96 GiB `plan` result. The release job runs that command on the staged archive and again after downloading the published archive.
+The site and installers accept only the release version and source commit they were built from. Each release includes `PROVENANCE.json` with that commit and the 96 GiB `plan` result. The release job runs that command on the staged archive and again after downloading the published archive.
 
 Homebrew:
 
@@ -97,6 +97,8 @@ Claim checks can run one at a time:
 ```sh
 npm test -- --grep @claim:demo-report
 ```
+
+A manual run of the release workflow builds all platform packages without publishing them. Only an exact `v<package version>` tag publishes a release. The deterministic archive builder lets package-manager checksums be committed before that tag is created.
 
 ## License and privacy
 
