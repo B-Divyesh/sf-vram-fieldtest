@@ -112,7 +112,7 @@ jobs:
         id: metadata
         shell: bash
         run: |
-          cat release/*.sha256 | LC_ALL=C sort -k2 > release/SHA256SUMS
+          cat release/*.sha256 | tr -d '\r' | LC_ALL=C sort -k2 > release/SHA256SUMS
           version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
           tag="v${version}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"

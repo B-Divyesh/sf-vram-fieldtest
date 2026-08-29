@@ -168,6 +168,7 @@ test('@claim:release-provenance release gates the staged and published candidate
   const exactPlan = 'plan --detected-mib 98304 --coverage 90 --window-mib 16384 --json';
   assert.equal(workflow.split(exactPlan).length - 1, 3);
   assert.match(workflow, /PROVENANCE\.json/);
+  assert.match(workflow, /tr -d '\\r'/);
   assert.match(workflow, /\.source_commit == \$commit/);
   assert.match(workflow, /sha256sum -c -/);
   assert.match(workflow, /\.requested_mib == 88474 and \.coverage_percent >= 90 and \.windows == 6/);
@@ -218,4 +219,16 @@ test('release-facing versions stay synchronized', () => {
   const powershell = readFileSync('site/public/install.ps1', 'utf8');
   assert.match(cargo, new RegExp(`version = "${pkg.version.replaceAll('.', '\\.') }"`));
   for (const source of [app, shell, powershell]) assert.match(source, new RegExp(`v${pkg.version.replaceAll('.', '\\.')}`));
+  for (const manifest of ['bucket/vram-fieldtest.json', 'scoop-bucket/vram-fieldtest.json']) {
+    const data = JSON.parse(readFileSync(manifest, 'utf8'));
+    assert.equal(data.version, pkg.version);
+    assert.match(data.url, new RegExp(`/v${pkg.version.replaceAll('.', '\\.')}\/`));
+    assert.match(data.hash, /^[a-f0-9]{64}$/);
+  }
+  const formula = readFileSync('Formula/vram-fieldtest.rb', 'utf8');
+  assert.match(formula, new RegExp(`version "${pkg.version.replaceAll('.', '\\.')}"`));
+  assert.equal((formula.match(/sha256 "[a-f0-9]{64}"/g) || []).length, 2);
+  const winget = readFileSync('winget/vram-fieldtest/vram-fieldtest.yaml', 'utf8');
+  assert.match(winget, new RegExp(`PackageVersion: ${pkg.version.replaceAll('.', '\\.')}`));
+  assert.match(winget, /InstallerSha256: [A-F0-9]{64}/);
 });
