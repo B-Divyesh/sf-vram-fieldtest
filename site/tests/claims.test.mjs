@@ -52,11 +52,37 @@ test('@claim:demo-sample CLI demo works without a network dependency', () => {
   rmSync(response.output, { recursive: true, force: true });
 });
 
+test('@claim:sample-equality web and CLI demos use the same bundled sample', () => {
+  const fixture = JSON.parse(readFileSync('examples/sample-report.json', 'utf8'));
+  const out = JSON.parse(execFileSync('target/debug/vram-fieldtest', ['demo', '--json'], { encoding: 'utf8' }));
+  const report = JSON.parse(readFileSync(join(out.output, 'report.json'), 'utf8'));
+  assert.equal(report.adapter.name, fixture.adapter.name);
+  assert.deepEqual(report.patterns.map(pattern => pattern.name), fixture.patterns.map(pattern => pattern.name));
+  assert.equal(report.limits.tested_mib, fixture.limits.tested_mib);
+  rmSync(out.output, { recursive: true, force: true });
+});
+
 test('@claim:cli-local CLI has no telemetry or network client', () => {
   const source = readFileSync('src/main.rs', 'utf8');
   const dependencies = execFileSync('cargo', ['tree', '--prefix', 'none'], { encoding: 'utf8' });
   assert.doesNotMatch(source, /TcpStream|UdpSocket|reqwest|https?:\/\//);
   assert.doesNotMatch(dependencies, /^(reqwest|hyper|ureq|telemetry)\s/vm);
+});
+
+test('@claim:report-output-path report files are written to the requested local directory', () => {
+  execFileSync('cargo', ['test', 'write_report_uses_the_requested_local_directory'], { stdio: 'pipe' });
+});
+
+test('@claim:non-invasive the CLI has no clock or driver changing command path', () => {
+  const source = readFileSync('src/main.rs', 'utf8');
+  assert.doesNotMatch(source, /--set|--overclock|nvidia-settings|setClocks/i);
+  assert.match(source, /rocm-smi", &\["--showtemp", "--showclocks", "--json"\]/);
+});
+
+test('@claim:unsigned-builds Windows and macOS artifacts are not signed in the release workflow', () => {
+  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  assert.match(workflow, /pkgbuild/);
+  assert.doesNotMatch(workflow, /codesign|signtool|Authenticode/i);
 });
 
 test('@claim:safety-consent real runs require explicit consent', () => {
@@ -246,6 +272,7 @@ test('service worker update policy matches the package version', () => {
   assert.match(worker, new RegExp(`v${pkg.version.replaceAll('.', '\\.')}`));
   assert.match(worker, /'\/app\.js'/);
   assert.match(worker, /'\/styles\.css'/);
+  assert.match(worker, /'\/mobile\.css'/);
   assert.match(worker, /keys\.filter\(key => key !== CACHE\).*caches\.delete/);
   assert.match(worker, /self\.skipWaiting\(\)/);
   assert.match(worker, /self\.clients\.claim\(\)/);
@@ -264,7 +291,7 @@ test('hashed site assets receive the immutable cache route', () => {
   assert.match(readFileSync('staticwebapp.config.json', 'utf8'), /"\/assets\/\*"[\s\S]*immutable/);
   const identity = JSON.parse(readFileSync('dist/site/release.json', 'utf8'));
   assert.equal(identity.tag, `v${JSON.parse(readFileSync('package.json', 'utf8')).version}`);
-  assert.equal(identity.source_commit, execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim());
+  assert.equal(identity.source_commit, execFileSync('git', ['rev-parse', `v${JSON.parse(readFileSync('package.json', 'utf8')).version}^{commit}`], { encoding: 'utf8' }).trim());
   assert.match(readFileSync('staticwebapp.config.json', 'utf8'), /"\/release\.json"[\s\S]*no-store/);
 });
 

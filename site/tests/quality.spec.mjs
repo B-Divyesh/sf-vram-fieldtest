@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { execFileSync } from 'node:child_process';
 
-const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const sourceCommit = execFileSync('git', ['rev-parse', 'v0.1.3^{commit}'], { encoding: 'utf8' }).trim();
 
 const releaseFixture = {
   tag_name: 'v0.1.3',
@@ -65,14 +65,23 @@ test('@claim:site-offline demo reloads offline after the first visit', async ({ 
   await expect(page.getByText('Demo — sample data, nothing is saved.')).toBeVisible();
 });
 
-test('@claim:demo-privacy demo makes only same-origin requests and ignores real license storage', async ({ page }) => {
+test('@claim:demo-privacy demo makes only same-origin requests and isolates its resettable storage', async ({ page }) => {
   const origins = [];
   page.on('request', request => origins.push(new URL(request.url()).origin));
   await page.addInitScript(() => localStorage.setItem('sb_license:vram-fieldtest', 'real-license'));
-  await page.goto('/demo');
+  await page.goto('/?demo=1');
   await page.waitForLoadState('networkidle');
   expect([...new Set(origins)]).toEqual(['http://127.0.0.1:4173']);
   await expect(page.getByText('Demo — sample data, nothing is saved.')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('demo:vram-fieldtest'))).toContain('Example GPU 12 GB');
+  await page.getByRole('button', { name: 'Reset demo' }).click();
+  expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('sb_license:')))).toEqual(['sb_license:vram-fieldtest']);
+});
+
+test('@claim:no-account core demo opens without credentials or account storage', async ({ page }) => {
+  await page.goto('/demo');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Read a sample GPU memory report.');
+  expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.includes('account') || key.startsWith('sb_license:')))).toEqual([]);
 });
 
 test('@claim:report-kit-output active Report Kit turns local JSON into a cover and labels', async ({ page }) => {
@@ -88,6 +97,25 @@ test('@claim:report-kit-output active Report Kit turns local JSON into a cover a
   await expect(page.locator('.batch-labels li')).toHaveCount(3);
   await expect(page.getByRole('button', { name: 'Print cover and labels' })).toBeVisible();
   expect(requests.some(url => url.includes('/verify?'))).toBeFalsy();
+});
+
+test('@claim:report-kit-price Report Kit shows a $19 checkout while the core demo report stays free', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 2, name: 'Report Kit — $19 once' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Buy Report Kit' })).toHaveAttribute('href', 'https://api.sociobot.in/api/v1/products/vram-fieldtest/checkout');
+  await expect(page.getByText('The core test and report files stay free.')).toBeVisible();
+  await page.goto('/demo');
+  await expect(page.getByText('PASS — no mismatches')).toBeVisible();
+});
+
+test('@claim:license-storage a license token is stored only after the visitor restores it', async ({ page }) => {
+  await page.route('**/api/license/verify**', route => route.fulfill({ json: { valid: false, reason: 'invalid' } }));
+  await page.goto('/');
+  expect(await page.evaluate(() => localStorage.getItem('sb_license:vram-fieldtest'))).toBeNull();
+  await page.getByText('Have a license?', { exact: true }).click();
+  await page.locator('#license').fill('fixture-license');
+  await page.getByRole('button', { name: 'Restore license' }).click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('sb_license:vram-fieldtest'))).toBe('fixture-license');
 });
 
 test('@claim:license-rate-limit Retry-After prevents repeated license checks', async ({ page }) => {
@@ -137,9 +165,28 @@ test('unknown route is a real HTTP 404 with a usable page', async ({ page, reque
   const response = await request.get('/missing-page');
   expect(response.status()).toBe(404);
   await page.goto('/missing-page');
-  await expect(page).toHaveTitle('Not found — VRAM Field Test');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('This page is not on the bench.');
+  await expect(page).toHaveTitle('Page not found — VRAM Field Test');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Page not found.');
   await expect(page.getByRole('link', { name: 'Return to field test' })).toBeVisible();
+});
+
+test('@claim:route-metadata every physical route has its own crawlable metadata before JavaScript', async ({ request }) => {
+  const expected = {
+    '/': ['VRAM Field Test — Test GPU memory', 'Test GPU memory and save a clear report before you buy or resell.'],
+    '/demo': ['Demo — VRAM Field Test', 'View a bundled GPU memory test report with sample data that is never saved.'],
+    '/report-kit': ['Report Kit — VRAM Field Test', 'Turn a local VRAM Field Test report into a printable cover and batch labels.'],
+    '/privacy': ['Privacy — VRAM Field Test', 'Read how VRAM Field Test stores local reports and optional license data.'],
+    '/terms': ['Terms — VRAM Field Test', 'Read the safety, license, and warranty terms for VRAM Field Test.'],
+    '/missing-page': ['Page not found — VRAM Field Test', 'This VRAM Field Test page could not be found.']
+  };
+  for (const [route, [title, description]] of Object.entries(expected)) {
+    const response = await request.get(route);
+    const html = await response.text();
+    expect(html).toContain(`<title>${title}</title>`);
+    expect(html).toContain(`name="description" content="${description}"`);
+    expect(html).toContain(`property="og:title" content="${title}"`);
+    expect(html).toContain(`name="twitter:title" content="${title}"`);
+  }
 });
 
 for (const route of ['/', '/demo', '/report-kit', '/privacy', '/terms', '/missing-page']) {

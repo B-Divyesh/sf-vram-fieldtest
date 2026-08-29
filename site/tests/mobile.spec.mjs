@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test';
 
+test('@claim:mobile-first-action mobile layout keeps the sample action inside the first 390 by 844 screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('https://api.github.com/repos/**/releases/latest', route => route.fulfill({ status: 503, body: 'unavailable' }));
+  await page.goto('/');
+  const primary = page.getByRole('link', { name: 'Try it with sample data' });
+  const box = await primary.boundingBox();
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(844);
+});
+
 test('mobile layout, controls, and 200% text remain usable', async ({ page }) => {
   await page.route('https://api.github.com/repos/**/releases/latest', route => route.fulfill({ status: 503, body: 'unavailable' }));
   await page.goto('/');

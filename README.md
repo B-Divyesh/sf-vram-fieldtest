@@ -1,20 +1,20 @@
 # VRAM Field Test
 
-Test GPU memory and save a clear report before you buy or resell.
+Test GPU memory before money changes hands.
 
-VRAM Field Test is for people who need repeatable evidence from a GPU memory-pattern run. It uses a portable WebGPU compute buffer, reads it back, and saves local JSON plus a print-ready HTML report. It does not overclock hardware, change drivers, or certify every GPU fault.
+VRAM Field Test is for buyers, resellers, and repair benches. It creates a local record of a GPU memory test.
 
 ## Try the sample
 
-The web demo is at [vram-fieldtest.sociobot.in/demo](https://vram-fieldtest.sociobot.in/demo). It shows bundled sample data and works offline after the first visit.
+Open the [web demo](https://vram-fieldtest.sociobot.in/demo). It shows bundled sample data and works offline after the first visit.
 
-The CLI demo needs no GPU and no network:
+The CLI demo needs no GPU or network connection:
 
 ```sh
 cargo run -- demo
 ```
 
-It prints the temporary folder containing `report.json` and `report.html`. This is the exact sample used by the site demo.
+It prints a temporary folder with `report.json` and `report.html`. The web and CLI demos use the same bundled sample.
 
 ## Install
 
@@ -30,9 +30,9 @@ On PowerShell:
 irm https://vram-fieldtest.sociobot.in/install.ps1 | iex
 ```
 
-Both installers read the release metadata, download the matching archive, verify its SHA-256 checksum, and place the binary on your path. Windows and macOS builds are unsigned. On macOS, use right-click → Open if Gatekeeper blocks an unsigned binary.
+Each installer downloads the matching archive and checks its SHA-256 checksum. It then adds the binary to your path.
 
-The site and installers accept only the release version and source commit they were built from. Each release includes `PROVENANCE.json` with that commit and the 96 GiB `plan` result. The release job runs that command on the staged archive and again after downloading the published archive.
+Windows and macOS builds are unsigned. On macOS, use right-click → Open if Gatekeeper blocks an unsigned binary.
 
 Homebrew:
 
@@ -51,7 +51,7 @@ The winget manifest is ready under `winget/` for owner submission.
 
 ## Run a test
 
-First inspect the adapter:
+Inspect the card and memory your driver reports:
 
 ```sh
 vram-fieldtest inspect
@@ -63,48 +63,53 @@ Run only with working cooling and a clear view of the machine:
 vram-fieldtest run --yes --mib 512 --output ./gpu-record
 ```
 
-`--yes` is explicit consent for a compute memory test. By default, the tool plans 90% of detected VRAM and verifies that total in bounded allocator windows. Use `--mib` to set a total coverage amount, or `--window-mib` to choose the largest allocator window (up to 16,384 MiB). The report records completed MiB, aggregate coverage, thermal samples, clock samples, and any unavailable local telemetry provider. A time or thermal stop saves an incomplete report before exit. A failed pattern exits with code 2. Use `--json` for a machine-readable final summary.
+`--yes` confirms that you want to start a compute memory test. By default, the tool plans 90% of reported memory in test batches.
 
-Plan a high-VRAM run without opening the GPU:
+Use `--mib` to set total memory to test. Use `--window-mib` to set the largest test batch, up to 16,384 MiB.
+
+The report records completed memory, each check, and local temperature or clock readings when available. A time or thermal stop saves an incomplete report before exit.
+
+A failed memory check exits with code 2. Use `--json` for a machine-readable final summary.
+
+Plan a high-memory test without opening the GPU:
 
 ```sh
 vram-fieldtest plan --detected-mib 98304 --coverage 90 --window-mib 16384 --json
 ```
 
-The tool runs three patterns: solid `AA`, solid `55`, and an address XOR value. It allocates a WebGPU storage buffer, writes each pattern on the selected adapter, copies it back, then checks every word. It keeps no telemetry; reports only write to the directory you select.
+The tool runs three memory checks. Technical names and definitions are available in the site’s Technical details section.
+
+The CLI makes no network request. It writes reports only to the folder you select.
 
 ## Develop and verify
 
 Requirements: current Rust stable and Node 20+.
 
 ```sh
+npm ci
 npm test
 npm run build
-```
-
-`npm run build:site` produces the static site at `dist/site` with `index.html` at that root. `npm run build` also produces the release binary at `target/release/vram-fieldtest`.
-
-The site build writes physical files for `/demo`, `/report-kit`, `/privacy`, and `/terms`. Unknown routes use `404.html` with HTTP 404. A managed Static Web Apps function at `/api/license/verify` applies the license-check allowance before it calls Sociobot.
-
-The clean-clone gate uses npm 10.9.8:
-
-```sh
-npm ci && npm test && npm run build
 npm run lint
 ```
 
-After deployment, `npm run verify:live -- https://vram-fieldtest.sociobot.in`
-checks live routes, both viewport sizes, keyboard focus, accessibility, privacy,
-offline reload, console output, and the deployed release identity.
+`npm run build:site` writes the deployable site to `dist/site`. `npm run build` also writes the release binary to `target/release/vram-fieldtest`.
 
-Claim checks can run one at a time:
+The site has physical pages for `/demo`, `/report-kit`, `/privacy`, and `/terms`. Unknown routes return the styled 404 page.
+
+Run a single claim check with:
 
 ```sh
 npm test -- --grep @claim:demo-report
 ```
 
-A manual run of the release workflow builds all platform packages without publishing them. Only an exact `v<package version>` tag publishes a release. The deterministic archive builder lets package-manager checksums be committed before that tag is created.
+After deployment:
+
+```sh
+npm run verify:live -- https://vram-fieldtest.sociobot.in
+```
 
 ## License and privacy
 
-MIT. See [LICENSE](LICENSE). The site has [privacy](https://vram-fieldtest.sociobot.in/privacy) and [terms](https://vram-fieldtest.sociobot.in/terms) pages. The optional $19 Report Kit reads a local report and creates a printable cover and batch labels. It never gates the core test or report export. The browser makes at most one background license check each 24 hours. The site server allows eight checks per network address in a rolling ten-minute window. The ninth check returns HTTP 429 with `Retry-After`; the browser waits until that time before another check.
+MIT. See [LICENSE](LICENSE). Read the site [privacy](https://vram-fieldtest.sociobot.in/privacy) and [terms](https://vram-fieldtest.sociobot.in/terms).
+
+Report Kit costs $19 once. It turns a local report into a printable cover and three batch labels. The core test and report files stay free.

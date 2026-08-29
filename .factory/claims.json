@@ -1,93 +1,24 @@
 [
-  {
-    "id": "demo-report",
-    "claim": "The CLI demo writes bundled JSON and a print-ready HTML report.",
-    "where": "Demo page, README",
-    "test": "npm test -- --grep @claim:demo-report",
-    "sandbox": "fresh checkout; run the CLI demo; parse report.json and assert report.html plus all three patterns"
-  },
-  {
-    "id": "demo-sample",
-    "claim": "The CLI demo uses bundled sample data in a temporary folder without a network dependency.",
-    "where": "Demo page, README",
-    "test": "npm test -- --grep @claim:demo-sample",
-    "sandbox": "fresh checkout; run the compiled demo behind failing proxy variables; assert its local files"
-  },
-  {
-    "id": "cli-local",
-    "claim": "The CLI makes no network request and sends no telemetry.",
-    "where": "Landing privacy section, privacy page, README",
-    "test": "npm test -- --grep @claim:cli-local",
-    "sandbox": "inspect the Rust source and complete dependency tree for network or telemetry clients"
-  },
-  {
-    "id": "safety-consent",
-    "claim": "A real GPU run requires explicit --yes consent.",
-    "where": "README, landing protocol",
-    "test": "npm test -- --grep @claim:safety-consent",
-    "sandbox": "invoke a real run without consent and assert it stops before opening an adapter"
-  },
-  {
-    "id": "high-vram-coverage",
-    "claim": "The default plan covers at least 90% of detected VRAM in bounded windows.",
-    "where": "Landing protocol, README",
-    "test": "npm test -- --grep @claim:high-vram-coverage",
-    "sandbox": "model a 98,304 MiB adapter and assert the plan covers at least 90% in more than one window"
-  },
-  {
-    "id": "installer-checksum",
-    "claim": "The shell installer verifies SHA-256 before placing the binary on PATH.",
-    "where": "Landing install section, README",
-    "test": "npm test -- --grep @claim:installer-checksum",
-    "sandbox": "serve a fixture release archive and checksum locally; run installer; assert installed bytes"
-  },
-  {
-    "id": "release-download",
-    "claim": "The landing page selects a published archive for the visitor's platform.",
-    "where": "Landing install section",
-    "test": "npm test -- --grep @claim:release-download",
-    "sandbox": "mock GitHub's CORS API with a Linux release and assert the rendered asset URL and version"
-  },
-  {
-    "id": "release-provenance",
-    "claim": "Release publication records the exact tagged source commit, and runs the 96 GiB plan on the staged and downloaded archive.",
-    "where": "README release process",
-    "test": "npm test -- --grep @claim:release-provenance",
-    "sandbox": "inspect the release workflow for tag-to-version/source equality, non-publishing rehearsals, deterministic archives, staged and downloaded plan checks, checksum verification, and source commit assertions"
-  },
-  {
-    "id": "site-offline",
-    "claim": "The demo page works offline after the first visit.",
-    "where": "Demo page, README",
-    "test": "npm test -- --grep @claim:site-offline",
-    "sandbox": "fresh browser context; load /demo; wait for service worker; go offline and reload"
-  },
-  {
-    "id": "demo-privacy",
-    "claim": "The browser demo uses sample data and makes only same-origin requests.",
-    "where": "Demo banner, demo documentation",
-    "test": "npm test -- --grep @claim:demo-privacy",
-    "sandbox": "fresh browser with a real-license sentinel; capture the entire demo request stream"
-  },
-  {
-    "id": "report-kit-output",
-    "claim": "Report Kit reads local report JSON and creates a printable cover with three batch labels.",
-    "where": "Landing paid tier, Report Kit page",
-    "test": "npm test -- --grep @claim:report-kit-output",
-    "sandbox": "seed a cached valid fixture license; upload bundled report JSON; assert cover, labels, and no verification request"
-  },
-  {
-    "id": "license-rate-limit",
-    "claim": "The browser makes at most one background license check per day and honors Retry-After when the license service limits requests.",
-    "where": "Privacy page, Terms",
-    "test": "npm test -- --grep @claim:license-rate-limit",
-    "sandbox": "mock a 429 verification response with Retry-After; assert the browser stores the hold and makes no second request"
-  },
-  {
-    "id": "unlock-allowance",
-    "claim": "The site server allows eight license checks per network address in ten minutes, then returns 429 with Retry-After.",
-    "where": "Privacy page, Terms, README",
-    "test": "npm test -- --grep @claim:unlock-allowance",
-    "sandbox": "invoke the server handler nine times for one forwarded client address; assert eight upstream calls followed by 429 and Retry-After"
-  }
+  {"id":"demo-report","claim":"The CLI demo writes bundled JSON and a print-ready HTML report.","where":"Demo page, README","test":"npm test -- --grep @claim:demo-report","sandbox":"fresh checkout; run the CLI demo; parse report.json and assert report.html plus all three checks"},
+  {"id":"demo-sample","claim":"The CLI demo uses bundled sample data in a temporary folder without a network dependency.","where":"Demo page, README","test":"npm test -- --grep @claim:demo-sample","sandbox":"fresh checkout; run the compiled demo behind failing proxy variables; assert its local files"},
+  {"id":"sample-equality","claim":"The web and CLI demos use the same bundled sample.","where":"README","test":"npm test -- --grep @claim:sample-equality","sandbox":"fresh checkout; compare the web sample fields with the CLI demo report fixture"},
+  {"id":"cli-local","claim":"The CLI makes no network request and sends no telemetry.","where":"Landing privacy section, privacy page, README","test":"npm test -- --grep @claim:cli-local","sandbox":"inspect the Rust source and complete dependency tree for network or telemetry clients"},
+  {"id":"report-output-path","claim":"Reports are written as JSON and print-ready HTML to the local output directory.","where":"Landing privacy section, README","test":"npm test -- --grep @claim:report-output-path","sandbox":"Rust fixture writes a report to a temporary chosen directory and asserts both output files"},
+  {"id":"non-invasive","claim":"The test does not change clock or driver settings.","where":"Memory test limits","test":"npm test -- --grep @claim:non-invasive","sandbox":"inspect the CLI command path for clock, driver, overclock, or vendor-setting commands"},
+  {"id":"unsigned-builds","claim":"Windows and macOS packages are unsigned.","where":"Landing install section, README","test":"npm test -- --grep @claim:unsigned-builds","sandbox":"inspect the release workflow for unsigned package creation and absence of signing commands"},
+  {"id":"no-account","claim":"The core test runs locally with no account.","where":"Landing facts","test":"npm test -- --grep @claim:no-account","sandbox":"fresh browser context; enter the demo without credentials or account storage and run the local CLI demo"},
+  {"id":"safety-consent","claim":"A real GPU run requires explicit --yes consent.","where":"README","test":"npm test -- --grep @claim:safety-consent","sandbox":"invoke a real run without consent and assert it stops before opening an adapter"},
+  {"id":"high-vram-coverage","claim":"The default plan covers at least 90% of reported GPU memory in test batches.","where":"Landing facts, README","test":"npm test -- --grep @claim:high-vram-coverage","sandbox":"model a 98,304 MiB adapter and assert the plan covers at least 90% in more than one batch"},
+  {"id":"installer-checksum","claim":"The shell installer verifies SHA-256 before placing the binary on PATH.","where":"README","test":"npm test -- --grep @claim:installer-checksum","sandbox":"serve a fixture release archive and checksum locally; run installer; assert installed bytes"},
+  {"id":"release-download","claim":"The landing page selects a published archive for the visitor's platform.","where":"Landing install section","test":"npm test -- --grep @claim:release-download","sandbox":"mock GitHub's CORS API with a Windows release and assert the rendered asset URL and version"},
+  {"id":"release-provenance","claim":"Release publication records the exact tagged source commit and runs the 96 GiB plan on staged and downloaded archives.","where":"Release workflow documentation","test":"npm test -- --grep @claim:release-provenance","sandbox":"inspect workflow gates for tag, source, deterministic archive, staged plan, published plan, and checksum checks"},
+  {"id":"site-offline","claim":"The demo page works offline after the first visit.","where":"Demo page, README","test":"npm test -- --grep @claim:site-offline","sandbox":"fresh browser context; load /demo; wait for service worker; go offline and reload"},
+  {"id":"demo-privacy","claim":"The browser demo uses sample data and makes only same-origin requests.","where":"Demo banner, demo documentation","test":"npm test -- --grep @claim:demo-privacy","sandbox":"fresh browser with a real-license sentinel; capture the entire demo request stream"},
+  {"id":"mobile-first-action","claim":"The sample-data action is fully visible in the first 390 by 844 mobile screen.","where":"Landing first screen","test":"npm test -- --grep @claim:mobile-first-action","sandbox":"fresh 390 by 844 browser context; assert the complete primary target is inside the viewport"},
+  {"id":"route-metadata","claim":"Each public route has route-specific title, description, canonical, Open Graph, and Twitter metadata before JavaScript runs.","where":"Site routes","test":"npm test -- --grep @claim:route-metadata","sandbox":"request built HTML for landing, demo, Report Kit, privacy, terms, and 404 without executing JavaScript"},
+  {"id":"report-kit-output","claim":"Report Kit reads local report JSON and creates a printable cover with three batch labels.","where":"Landing paid tier, Report Kit page","test":"npm test -- --grep @claim:report-kit-output","sandbox":"seed a cached valid fixture license; upload bundled report JSON; assert cover, labels, and no verification request"},
+  {"id":"report-kit-price","claim":"Report Kit costs $19 once and never gates the core test or report files.","where":"Landing paid tier, Report Kit page, README","test":"npm test -- --grep @claim:report-kit-price","sandbox":"fresh unlicensed browser context; assert $19 purchase copy, Sociobot checkout link, free demo report, and free core-report wording"},
+  {"id":"license-storage","claim":"The site saves a license token only after a visitor adds one.","where":"Landing privacy section","test":"npm test -- --grep @claim:license-storage","sandbox":"fresh browser context; assert no license key on load, add a fixture token, and assert only that key is stored"},
+  {"id":"license-rate-limit","claim":"The browser makes at most one background license check per day and honors Retry-After when the license service limits requests.","where":"Privacy page, Terms","test":"npm test -- --grep @claim:license-rate-limit","sandbox":"mock a 429 verification response with Retry-After; assert the browser stores the hold and makes no second request"},
+  {"id":"unlock-allowance","claim":"The site server allows eight license checks per network address in ten minutes, then returns 429 with Retry-After.","where":"Privacy page, Terms","test":"npm test -- --grep @claim:unlock-allowance","sandbox":"invoke the server handler nine times for one forwarded client address; assert eight upstream calls followed by 429 and Retry-After"}
 ]

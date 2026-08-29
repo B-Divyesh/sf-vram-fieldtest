@@ -1,5 +1,5 @@
 const CACHE = 'vram-fieldtest-shell-v0.1.3';
-const SHELL = ['/', '/demo', '/styles.css', '/app.js', '/hero-vram-small.webp', '/favicon.svg'];
+const SHELL = ['/', '/demo', '/styles.css', '/mobile.css', '/app.js', '/hero-vram-small.webp', '/favicon.svg'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));

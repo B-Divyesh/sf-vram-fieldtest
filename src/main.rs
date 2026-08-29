@@ -988,4 +988,12 @@ mod tests {
         assert!(html.contains("Coverage"));
         assert!(html.contains("Thermals and clocks"));
     }
+    #[test]
+    fn write_report_uses_the_requested_local_directory() {
+        let report: Report = serde_json::from_str(include_str!("../examples/sample-report.json")).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        write_report(directory.path(), &report).unwrap();
+        assert!(directory.path().join("report.json").is_file());
+        assert!(directory.path().join("report.html").is_file());
+    }
 }

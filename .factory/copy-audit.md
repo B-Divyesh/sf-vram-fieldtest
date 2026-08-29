@@ -1,50 +1,51 @@
-# Landing copy audit
+# Landing copy audit — polish 1
 
-The first screen reads aloud in one breath: “Test GPU memory before money changes hands. For buyers, resellers, and repair benches who need a clear memory test record. Try it with sample data.” It identifies the job, user, and first action.
+The first screen reads in one breath: “Test GPU memory before money changes hands. For buyers, resellers, and repair benches who need a clear memory test record. Try it with sample data.” It names the job, audience, and first action.
 
-| Sentence | Words | Flag |
+| Sentence or label | Words | Claim test / flag |
 |---|---:|---|
-| Test GPU memory before money changes hands. | 8 | — |
+| Test GPU memory before money changes hands. | 7 | — |
 | For buyers, resellers, and repair benches who need a clear memory test record. | 13 | — |
+| Try it with sample data | 5 | `demo-privacy` |
 | See a finished report and the exact test limits. | 9 | — |
-| Runs locally. | 2 | — |
-| No account. | 2 | — |
-| Defaults to 90% detected coverage in windows. | 7 | — |
-| Free core test. | 3 | — |
-| $19 Report Kit. | 3 | — |
-| See the result before you install. | 7 | — |
-| A pass documents this bounded run. | 6 | — |
-| It does not certify every GPU fault. | 7 | — |
-| Every run saves JSON for records and one page you can print. | 12 | — |
-| The report names the adapter, each pattern, mismatches, and coverage. | 10 | — |
-| Run it in three bounded steps. | 6 | — |
-| Find the adapter and the VRAM the driver exposes. | 10 | — |
-| Confirm consent, choose a safe buffer size, then write and read back patterns. | 14 | — |
-| Save local JSON and a print-ready report with limits beside the result. | 12 | — |
-| It tests memory. | 3 | — |
-| It does not fix or certify hardware. | 7 | — |
-| VRAM Field Test does not overclock, change drivers, or give repair advice. | 12 | — |
-| Monitor cooling during every run. | 5 | — |
-| Coverage stays visible when the driver cannot expose all VRAM. | 10 | — |
-| Reports stay in the folder you choose. | 7 | — |
-| The CLI makes no network request. | 6 | — |
-| The site stores a license token only when you add one. | 11 | — |
-| Use one command. | 3 | — |
-| Check the checksum. | 3 | — |
-| Windows and macOS packages are unsigned. | 6 | — |
-| Downloads are being published. | 4 | — |
-| One-time license. | 2 | — |
-| Turn local report JSON into a printable cover and batch labels. | 11 | — |
-| The safety test and both report files stay free. | 9 | — |
+| Runs locally with no account. | 5 | `no-account` |
+| Tests 90% of reported memory in safe batches. | 9 | `high-vram-coverage` |
+| Free core test. | 3 | `report-kit-price` |
+| Report Kit costs $19 once. | 5 | `report-kit-price` |
+| Sample report | 2 | — |
+| Memory tested: 11.25 GB of 12 GB. | 7 | `sample-equality` |
+| Three memory checks completed. | 5 | `demo-report` |
+| A pass records this test only. | 6 | — |
+| Each run writes a JSON record and a print-ready HTML report. | 11 | `demo-report` |
+| The report lists the card, checks, mismatches, and memory tested. | 9 | `demo-report` |
+| MiB is a memory unit. | 5 | — |
+| An address-XOR check writes a changing value at each memory address. | 10 | — |
+| These checks help find memory errors. | 6 | — |
+| How the memory test works | 5 | — |
+| See the card and memory your driver reports. | 9 | — |
+| Confirm, choose an amount, then check memory. | 7 | — |
+| Save a local JSON and print-ready report with the result and limits. | 12 | `demo-report` |
+| Memory test limits | 3 | — |
+| The test checks GPU memory. | 5 | — |
+| It does not change clocks or drivers. | 7 | `non-invasive` |
+| Watch cooling while it runs. | 5 | — |
+| Reports save to the folder you choose. | 7 | `report-output-path` |
+| The CLI makes no network request. | 6 | `cli-local` |
+| The site saves a license token only after you add one. | 11 | `license-storage` |
+| Install VRAM Field Test | 4 | — |
+| Windows and macOS packages are unsigned. | 6 | `unsigned-builds` |
+| One license creates printable covers and batch labels from a local report. | 11 | `report-kit-output` |
+| The core test and report files stay free. | 8 | `report-kit-price` |
 
-No sentence exceeds 22 words. No banned word appears. The catalog summary is “Test GPU memory and save a clear report before you buy or resell.” It starts with a verb, uses 13 words, and is under 120 characters.
+No sentence exceeds 22 words. No banned word appears. The catalog description starts with “Test,” has 12 words, and is under 120 characters.
 
 ## Terminology
 
 | Concept | One term used |
 |---|---|
-| GPU result file | report |
-| Amount of memory passed through patterns | tested coverage |
+| Amount checked | memory tested |
+| Allocator subdivision | test batch |
 | Preloaded example | sample data |
-| Paid one-time option | Report Kit |
-| Memory writing/checking value | pattern |
+| GPU result file | report |
+| Optional paid add-on | Report Kit |
+| Memory-writing check | memory check |
