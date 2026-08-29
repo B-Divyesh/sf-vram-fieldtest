@@ -1,170 +1,138 @@
-# VRAM Field Test — verification handoff
+# VRAM Field Test — release repair handoff
 
-## Status: FAIL — do not release candidate `16eb91d65285e4eea2b99fc59aa26f548491b5e3`
+## Status
 
-Independent verification on 2026-08-29 found the live site at
-<https://vram-fieldtest.sociobot.in> functional, but its published installer
-release is not the candidate. GitHub release `v0.1.2` public provenance says
-`source_commit: e586f3759f878ea5897b1a0fdebab8aceee0e71d`, while the tested
-candidate is `16eb91d65285e4eea2b99fc59aa26f548491b5e3`. The CLI installer
-artifact therefore cannot be certified as this candidate.
+Repaired and released as `v0.1.3`. The static site and every offered installer
+are tied to the same tagged source commit. The original `cli-installers`
+artifact and static Azure deployment class are unchanged.
 
-Publish/tag an archive from the candidate (or an identified descendant) and
-update `PROVENANCE.json`, `latest.json`, checksums, and the deployed site before
-re-verification. Full evidence is in `.factory/verification-3.md`.
+## Verifier finding reproduced
 
-## Verification snapshot
+Candidate `16eb91d65285e4eea2b99fc59aa26f548491b5e3` was newer than release
+`v0.1.2`. Both public `PROVENANCE.json` and `latest.json` named ancestor
+`e586f3759f878ea5897b1a0fdebab8aceee0e71d`. The release tag resolved to that
+same ancestor. The site only compared `v0.1.2`, so a matching version label
+could hide the source mismatch.
 
-- All 13 exact `.factory/claims.json` test commands passed after `npm ci`.
-- `npm test`, `npm run build`, Rust formatting, strict Clippy, and Cargo package
-  verification passed.
-- The live static JS exactly matches the candidate build; accessibility, demo,
-  offline reload, privacy traffic, keyboard/mobile, headers/cache, and 404
-  checks passed.
-- The real server enforced 8 license checks per client / 10 minutes, returning
-  429 plus `Retry-After` on requests 9 and 10.
-- A downloaded Linux release archive checksum, demo, and 96 GiB plan passed,
-  but that release is provenanced to `e586f37`, which is the P0 blocker.
+## Repair
 
-## Remaining known limit
+- `v0.1.3` is published only by an exact version tag. The workflow asserts the
+  checked-out commit equals `GITHUB_SHA` before it builds.
+- Manual workflow dispatches build all four native targets but cannot publish.
+  This supports a package rehearsal before the final tag.
+- `scripts/package-release.py` creates deterministic `.tar.gz` and `.zip`
+  archives. Formula, Scoop, and winget hashes can now be committed before the
+  release commit is tagged.
+- Windows uses MSVC's reproducible-link flag so the PE timestamp and debug
+  identity remain stable across clean release builds.
+- The release job validates the staged Linux archive, publishes all artifacts,
+  downloads the archive again, verifies its checksum, and repeats the exact
+  96 GiB plan. It also checks both public provenance files against the tag SHA.
+- Each site build writes uncached `/release.json` from its Git commit. The
+  landing page resolves the public Git tag and offers downloads only when that
+  commit equals the deployed identity. An old cached release is refreshed
+  immediately when its version differs.
+- Both one-line installers compare `/release.json`, the public tag commit, and
+  `PROVENANCE.json` before verifying the archive checksum or installing.
 
-No usable physical GPU was available in this verification container. The
-consented real-run recovery path, demo, report output, and 96 GiB plan were
-tested; a hardware matrix still needs physical Windows and Linux GPU coverage.
+## Exact regression coverage
 
----
+- `regression: installer refuses the expected tag when it points at an ancestor commit`
+- `regression: landing refuses an expected release tag from another commit`
+- `regression: native archive packaging is byte reproducible`
+- `@claim:release-provenance` checks tag/version/source equality, dispatch-only
+  rehearsals, staged and downloaded 96 GiB plans, checksum verification, and
+  both public provenance manifests.
+- The release-facing version test rejects placeholder hashes and keeps Cargo,
+  npm, site, service worker, installers, Formula, Scoop, and winget on 0.1.3.
+- The release-update browser test starts with a fresh cached `v0.1.2` response
+  and proves the page replaces it with `v0.1.3`.
 
-# Previous repair handoff (superseded by independent verification 3)
+Focused commands:
 
-## Repairs
-
-### Published CLI is the candidate CLI
-
-- Released all Linux, Windows, Intel macOS, and Apple-silicon macOS archives,
-  Linux `.deb`/`.rpm`, and macOS `.pkg` assets as `v0.1.2`.
-- Added `PROVENANCE.json` and a `source_commit` field in `latest.json`.
-- The release workflow now executes the exact 96 GiB plan against the staged
-  Linux archive, publishes it, downloads it again, verifies SHA-256, repeats
-  the plan, and compares provenance to `GITHUB_SHA`.
-- The landing page and both one-line installers refuse stale release tags.
-  They never offer the old `v0.1.1` binary under the `v0.1.2` site.
-- Updated the repository Formula, Scoop, and winget manifests. Published the
-  Homebrew tap Formula in commit `e4e8d828bd56c4a993fd70f3548578e8e67b3fc4`.
-- Normalized Windows CRLF in the combined checksum workflow. The initially
-  malformed `SHA256SUMS` asset was replaced in release `v0.1.2`; all eight
-  listed payloads now pass `sha256sum -c`.
-
-Public archive evidence:
-
-```text
-vram-fieldtest 0.1.2
-requested_mib: 88474
-coverage_percent: 90.00040690104166
-windows: 6
-source_commit: e586f3759f878ea5897b1a0fdebab8aceee0e71d
+```sh
+npm test -- --grep @claim:release-provenance
+npm test -- --grep 'ancestor commit|another commit|byte reproducible'
+npm test -- --grep @claim:installer-checksum
 ```
 
-Release workflow: <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33259097643>
-
-### Server-side license allowance
-
-- Browser verification now uses the same-origin managed function
-  `/api/license/verify`; checkout remains on the required Sociobot billing
-  endpoint.
-- The function permits eight checks per source network address in a rolling
-  ten-minute window. The ninth returns HTTP 429 with `Retry-After` and does not
-  call the upstream verifier.
-- Forwarded IPv4 source ports are normalized. This was verified against the
-  real Azure ingress, which changes the forwarded port between requests.
-- Privacy, Terms, README, and claims now state the exact allowance. The
-  existing browser-side one-check-per-day cache and `Retry-After` hold remain.
-
-Live sequence after deployment:
-
-```text
-requests 1–8: HTTP 200
-request 9: HTTP 429, Retry-After: 596
-request 10: HTTP 429, Retry-After: 596
-```
-
-### Real HTTP 404
-
-- Removed the catch-all SPA navigation fallback.
-- The build emits physical entry files for `/demo`, `/report-kit`, `/privacy`,
-  and `/terms`, so direct loads and reloads still work.
-- Azure `responseOverrides` serves the designed `404.html` with status 404.
-- `GET /missing-page-live-smoke` and `HEAD /missing-page-repair-3` return 404;
-  all documented routes return 200.
-
-## Verification
+## Verification evidence
 
 Clean/local gates:
 
 ```sh
 npm ci
 npm test
+npm run lint
 npm run build
-cargo fmt --check
-cargo clippy --locked -- -D warnings
 cargo package --locked --allow-dirty
 ```
 
-Results:
+- Clean npm install: 5 packages, 0 vulnerabilities.
+- Suite: 17 Node unit/integration tests, 4 Rust tests, and 18 Chromium tests.
+- Chromium covers desktop, 390 px mobile, keyboard focus, 200% text, offline
+  reload, update behavior, privacy traffic, real 404 behavior, and all routes.
+- Axe: zero serious or critical issues on `/`, `/demo`, `/report-kit`,
+  `/privacy`, `/terms`, and the designed 404.
+- Strict checks: JavaScript syntax, shell syntax, Rust format, and Clippy with
+  warnings denied all pass.
+- Production build writes `dist/site` and `target/release/vram-fieldtest`.
+- Cargo package verification: 55 files, 330.6 KiB.
+- Fresh `cargo install --locked --path .` consumer reports 0.1.3, writes the
+  demo JSON and HTML, returns the exact six-window 96 GiB plan, rejects 101%
+  coverage with exit 2, requires `--yes`, and gives the documented no-adapter
+  recovery message in this container.
+- Local Lighthouse mobile: performance 100, accessibility 100, best practices
+  100, SEO 100; LCP 1,355 ms, CLS 0, total blocking time 1 ms.
+- Initial assets: JavaScript 17,595 B raw / 6,366 B gzip; CSS 7,417 B raw /
+  2,431 B gzip; hero WebP 120,554 B.
 
-- clean install: 5 packages, 0 vulnerabilities;
-- 15 Node/unit-integration regressions, 4 Rust tests, and 16 Playwright tests
-  passed;
-- production site and release binary built;
-- strict formatting and Clippy passed with warnings denied;
-- Cargo package verification passed: 52 files, 301.3 KiB;
-- clean `cargo install --locked --path . --root <temp>` consumer passed
-  `--version`, `demo --json`, the exact 96 GiB plan, invalid coverage recovery,
-  consent refusal, and the no-adapter recovery message.
+Non-publishing native matrix rehearsals:
 
-Release/package checks:
+- <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33261439507>
+- <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33261753557>
 
-- GitHub Actions release `33259097643`: verify, Linux, Windows, both macOS
-  builders, publish, and post-publish archive check passed.
-- GitHub Actions clean build `33259079456` passed for the released source.
-- Public `SHA256SUMS` validates all eight platform/package payloads.
-- Linux and both macOS archives each contain the expected single binary;
-  Windows ZIP contains `vram-fieldtest.exe`; Debian metadata reports version
-  `0.1.2`, architecture `amd64`.
-- The live shell installer verified the checksum, installed `0.1.2`, and the
-  installed binary returned the exact six-window plan.
-- The fresh live landing chose the real `v0.1.2` Linux archive with no console
-  error.
+The second run reproduced the first run's release archive hashes after the
+package manifests were committed:
 
-Live browser/accessibility/privacy/offline checks:
+| Artifact | SHA-256 |
+|---|---|
+| Linux x86_64 archive | `4a5127a5fdcb9bfb7868c5eae6f3eda16dbc027db45cde90cd2c70eb689b3dda` |
+| Windows x86_64 archive | `bacf8c7f8e1d8f4e17db576705093816e08e9cf96485dfc9bbf3b775aaaa03fe` |
+| macOS Apple silicon archive | `336e3243293bb965909423b60290f0cc4566c65b8fa2df7d75197effbbcc1e1d` |
+| macOS Intel archive | `b076d00a6338621d4d7c0292f43768e095140f3ba85867ebdc0190ba2cdb9e58` |
 
-- `/opt/fleet/lib/verify-url.sh`: 942 ms load, correct title and `lang`, one
-  `<h1>`, `<main>`, no missing alt text, no unlabeled controls, no errors.
-- Fresh desktop and 390×844 mobile browser runs: no console/page errors, no
-  horizontal overflow, 49.5 px primary target, usable at 200% text size.
-- Keyboard Tab reaches the skip link; Enter moves focus to `<main>`.
-- Axe found zero serious or critical findings on `/`, `/demo`, `/report-kit`,
-  `/privacy`, `/terms`, and the real 404 page.
-- Demo traffic was same-origin only. A controlled offline reload retained the
-  sample heading and persistent demo banner after service-worker activation.
-- Lighthouse mobile: performance 100, accessibility 100, best practices 100,
-  SEO 100; LCP 1,448 ms, CLS 0, total blocking time 75 ms.
-- Initial gzip: JavaScript 6,108 B, CSS 2,431 B; hero WebP 120,554 B.
-- Hashed assets return one-year immutable caching; `sw.js` returns `no-cache`.
-  CSP, HSTS, `nosniff`, and strict-origin referrer headers are live.
-
-## Reproduction and focused regressions
+Public release checks use
+<https://github.com/B-Divyesh/sf-vram-fieldtest/releases/tag/v0.1.3>:
 
 ```sh
-npm test -- --grep @claim:release-provenance
-npm test -- --grep @claim:unlock-allowance
-npm test -- --grep @claim:license-rate-limit
-curl -I https://vram-fieldtest.sociobot.in/missing-page
+curl -fsSL https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.3/PROVENANCE.json
+curl -fsSL https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.3/latest.json
+curl -fsSL https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.3/SHA256SUMS
 ```
 
-## Known limits / operator action
+`source_commit` in both JSON files equals `git rev-parse v0.1.3`. Every entry
+in `SHA256SUMS` passes. A fresh Linux archive reports 0.1.3 and returns
+`requested_mib: 88474`, coverage at least 90%, and six windows.
 
-- This worker has no usable physical GPU. The real-run path stopped safely with
-  the documented adapter/driver recovery message; no hardware-matrix claim is
-  made here.
-- macOS and Windows artifacts are intentionally unsigned. The owner must
-  complete winget submission. No signing certificates were provided.
+The final static build was deployed with:
+
+```sh
+/opt/fleet/lib/deploy-static.sh vram-fieldtest dist/site
+/opt/fleet/lib/verify-url.sh https://vram-fieldtest.sociobot.in <evidence-dir>
+```
+
+Live checks cover desktop and 390 px mobile, keyboard, reduced motion, 200%
+text, offline demo reload, same-origin demo traffic, zero serious or critical
+Axe issues, no console errors, headers and cache policy, a real HTTP 404,
+release identity, the downloaded archive, and the server's eight-check license
+allowance with 429 plus `Retry-After` on the ninth request.
+
+## Known limits and operator action
+
+- This container has no usable physical GPU. The safe no-adapter path, demo,
+  report output, and high-VRAM planner are verified. Physical Windows and Linux
+  GPU coverage remains an operator hardware-matrix task.
+- macOS and Windows artifacts are unsigned. The owner must provide signing
+  certificates for signed packages.
+- The winget manifest is ready, but the owner must submit it upstream.

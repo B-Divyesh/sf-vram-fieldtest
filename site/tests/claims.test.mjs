@@ -221,6 +221,9 @@ test('@claim:release-provenance release gates the staged and published candidate
 });
 
 test('regression: native archive packaging is byte reproducible', () => {
+  const cargoConfig = readFileSync('.cargo/config.toml', 'utf8');
+  assert.match(cargoConfig, /target\.x86_64-pc-windows-msvc/);
+  assert.match(cargoConfig, /link-arg=\/Brepro/);
   const dir = mkdtempSync(join(tmpdir(), 'vram-reproducible-'));
   try {
     const binary = join(dir, 'vram-fieldtest');

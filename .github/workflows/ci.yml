@@ -22,4 +22,4 @@ jobs:
       - name: Exact clean build command
         run: npm ci && npm test && npm run build
       - name: Rust formatting and strict lint
-        run: cargo fmt --check && cargo clippy --locked -- -D warnings
+        run: npm run lint

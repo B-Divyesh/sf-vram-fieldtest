@@ -11,6 +11,8 @@
     "build": "npm run build:site && cargo build --release",
     "test": "node site/test-runner.mjs",
     "test:browser": "playwright test",
+    "lint": "node --check site/src/app.js && node --check site/build.mjs && node --check site/dev.mjs && node --check site/live-verify.mjs && node --check api/license-verify/index.js && sh -n site/public/install.sh && cargo fmt --check && cargo clippy --locked -- -D warnings",
+    "verify:live": "node site/live-verify.mjs",
     "dev": "node site/dev.mjs"
   },
   "devDependencies": {

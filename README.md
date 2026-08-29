@@ -90,7 +90,12 @@ The clean-clone gate uses npm 10.9.8:
 
 ```sh
 npm ci && npm test && npm run build
+npm run lint
 ```
+
+After deployment, `npm run verify:live -- https://vram-fieldtest.sociobot.in`
+checks live routes, both viewport sizes, keyboard focus, accessibility, privacy,
+offline reload, console output, and the deployed release identity.
 
 Claim checks can run one at a time:
 
