@@ -1,39 +1,49 @@
-# Review 1 handoff — VRAM Field Test
+# Polish 1 handoff — VRAM Field Test
 
 ## Result
 
-Independent adversarial first-read review completed: **FAIL**. See
-`.factory/review-1.md` for all evidence and required fixes.
+Repair commit: `22f66b147e4755f7f3c43d748fdd9e7ae07fcc67`.
 
-No product code was changed. This review adds only the required review artifact
-and this handoff.
+This closes every finding in `.factory/review-1.md`. The repair preserves the cassette-era zine visual system while making the first mobile screen actionable, turning the demo into a direct `?demo=1` sandbox, and giving every retained visitor-reliant claim an exact automated check.
 
-## Verified
+## What changed
 
-- Cold live desktop and 390 × 844 mobile loads.
-- One-click `/demo`, sample content, banner, reset namespace, storage
-  isolation, same-origin request log, and console output.
-- CLI `demo --json` from this checkout.
-- Every exact `.factory/claims.json` command independently, plus full
-  `npm test`: 17 Node, 4 Rust, and 18 browser checks passed.
-- `npm run build` generated `dist/site` and the release binary.
-- Route status/404, metadata, source, link targets, prior verification reports,
-  and the previous handoff.
+- The first 390 × 844 screen shows the complete sample CTA before the decorative image. Screenshot: `artifacts/polish-1-mobile-390x844.png`.
+- The landing CTA opens `/?demo=1`. Demo mode uses only `demo:vram-fieldtest`; Reset demo recreates sample-only state and Start for real clears it.
+- Static route heads now differ for landing, Demo, Report Kit, Privacy, Terms, and 404 before JavaScript runs. Route transitions update focus, title, canonical, social metadata, and the polite route announcement.
+- Rewrote non-standalone themed labels and unexplained first-screen jargon. Moved technical pattern names behind Technical details.
+- Added the claims registry, route metadata, demo sandbox, output-directory, pricing/free-core, unsigned-package, non-invasive, mobile, and storage proofs. See `.factory/polish-1.md`.
+- Rewrote README install copy and added the verb-first catalog description.
 
-## Remaining findings
+## Exact verification evidence
 
-1. **Blocking:** the primary sample-data action is clipped below the first
-   390 × 844 viewport.
-2. **Blocking:** material landing/README promises are not listed or tested in
-   `claims.json`.
-3. Non-home routes retain home description/social metadata.
-4. Several headings are theme labels rather than useful section names, first
-   screen has unexplained technical jargon, and one README sentence exceeds
-   the required length limit.
+From a fresh local clone at `/tmp/vram-fieldtest-clean-h7g7zj`:
 
-## Limitation and next step
+```sh
+npm ci
+npm test
+npm run lint
+npm run build
+```
 
-No usable physical GPU is available in this container, so a real hardware
-memory run was not repeated. Implement every finding in `.factory/review-1.md`
-and re-run the complete checklist from a clean checkout and fresh browser
-contexts.
+All passed: 21 Node checks, 5 Rust tests, and 23 Playwright tests. The build produced `dist/site` and `target/release/vram-fieldtest`.
+
+Every one of the 22 exact commands listed in `.factory/claims.json` then passed independently from that clone. Their command logs are `/tmp/vram-clean-claim-*.log` in this worker container.
+
+Other evidence:
+
+- `@claim:mobile-first-action` asserts the complete primary target is inside a fresh 390 × 844 viewport.
+- `@claim:demo-privacy` enters `/?demo=1`, records only same-origin requests, checks the demo namespace, and exercises Reset demo.
+- `@claim:route-metadata` requests all built physical routes without JavaScript and checks title, description, OG, and Twitter data.
+- Axe runs report no serious or critical issues on `/`, `/demo`, `/report-kit`, `/privacy`, `/terms`, and the actual 404.
+- Screenshot captures: `artifacts/polish-1-mobile-390x844.png` and `artifacts/polish-1-demo.png`.
+
+## Deploy
+
+Work order configuration: static deploy, `npm ci && npm run build:site`, publish `dist/site`. Push `main` at the repair commit to deploy.
+
+The site intentionally continues to identify the already-published CLI release `v0.1.3` and its tagged source commit in `release.json`. This static-site repair does not alter the shipped binary or fabricate a new installer release.
+
+## Known limitation
+
+No usable physical GPU is exposed in this worker. The clean-clone suite verifies planning, consent, local report creation, no-adapter recovery, and all browser paths. A physical GPU pattern run remains the only hardware-dependent check.
