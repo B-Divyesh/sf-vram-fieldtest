@@ -1,4 +1,28 @@
-# Repair 6 handoff
+# Verification 7 status — FAIL
+
+Independent verification of candidate
+`c1d11f2023a9435a3ec0626fc62dd3c4a996e6e8` at
+<https://vram-fieldtest.sociobot.in> **FAILS the researched acceptance
+contract**. See `.factory/verification-7.md` for full fresh evidence.
+
+All 26 claim commands, clean tests/build/lint/package, release archive,
+consumer install, live accessibility/privacy/offline checks, response headers,
+and the live eight-per-ten-minute license allowance passed. The candidate's
+only release blocker is a P0 evidence gap: no completed physical Windows or
+Linux GPU run demonstrates the brief's required at-least-90%-of-detected-VRAM
+coverage. Published cross-platform evidence is still only a 4 MiB software
+renderer protocol, while the 96 GiB evidence is only `plan` arithmetic.
+
+The live files are byte-for-byte equal to the candidate build. Its
+`release.json` properly identifies the v0.1.6 release source
+`2a23a4b55a48fcffcf79e0209a9c566e13097a4f`; the candidate is a
+documentation-only descendant. This is not a deployment mismatch.
+
+To pass: publish completed reproducible physical Windows and Linux reports
+with non-null detected memory, at least 90% completed coverage, three completed
+patterns, and selected-adapter thermal telemetry, then repeat independent QA.
+
+# Repair 6 handoff (superseded by verification 7)
 
 ## Result
 
