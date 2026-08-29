@@ -34,7 +34,7 @@ const pageHead = (html, route) => {
 const releaseTag = `v${packageData.version}`;
 let sourceCommit;
 try {
-  sourceCommit = execFileSync('git', ['rev-parse', `${releaseTag}^{commit}`], { cwd: root, encoding: 'utf8' }).trim();
+  sourceCommit = execFileSync('git', ['rev-parse', `${releaseTag}^{commit}`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 } catch {
   sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 }

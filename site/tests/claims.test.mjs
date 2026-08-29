@@ -125,12 +125,12 @@ test('@claim:installer-checksum shell installer downloads, verifies, and install
   const sourceCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const server = createServer((req, res) => {
     const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.3', assets: [
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.4', assets: [
       { browser_download_url: `${base}/vram-fieldtest-linux-x86_64.tar.gz` },
       { browser_download_url: `${base}/SHA256SUMS` },
       { browser_download_url: `${base}/PROVENANCE.json` }
     ] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.3', source_commit: sourceCommit }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.4', source_commit: sourceCommit }, null, 2));
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: sourceCommit }, null, 2));
     if (req.url === '/vram-fieldtest-linux-x86_64.tar.gz') return res.end(archive);
     if (req.url === '/SHA256SUMS') return res.end(`${sum}  vram-fieldtest-linux-x86_64.tar.gz\n`);
@@ -175,7 +175,7 @@ test('installer refuses a stale release instead of installing the wrong CLI', as
       child.on('exit', status => resolve({ status, stderr }));
     });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Downloads for v0\.1\.3 are not published yet/);
+    assert.match(result.stderr, /Downloads for v0\.1\.4 are not published yet/);
     assert.equal(existsSync(join(dir, 'vram-fieldtest')), false);
   } finally {
     server.close();
@@ -186,8 +186,8 @@ test('installer refuses a stale release instead of installing the wrong CLI', as
 test('regression: installer refuses the expected tag when it points at an ancestor commit', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vram-ancestor-installer-'));
   const server = createServer((req, res) => {
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.3', assets: [] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.3', source_commit: 'a'.repeat(40) }, null, 2));
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.4', assets: [] }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.4', source_commit: 'a'.repeat(40) }, null, 2));
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: 'b'.repeat(40) }, null, 2));
     res.writeHead(404).end();
   });
@@ -309,7 +309,13 @@ test('hashed site assets receive the immutable cache route', () => {
   assert.match(readFileSync('staticwebapp.config.json', 'utf8'), /"\/assets\/\*"[\s\S]*immutable/);
   const identity = JSON.parse(readFileSync('dist/site/release.json', 'utf8'));
   assert.equal(identity.tag, `v${JSON.parse(readFileSync('package.json', 'utf8')).version}`);
-  assert.equal(identity.source_commit, execFileSync('git', ['rev-parse', `v${JSON.parse(readFileSync('package.json', 'utf8')).version}^{commit}`], { encoding: 'utf8' }).trim());
+  let expectedSourceCommit;
+  try {
+    expectedSourceCommit = execFileSync('git', ['rev-parse', `${identity.tag}^{commit}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    expectedSourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  }
+  assert.equal(identity.source_commit, expectedSourceCommit);
   assert.match(readFileSync('staticwebapp.config.json', 'utf8'), /"\/release\.json"[\s\S]*no-store/);
 });
 

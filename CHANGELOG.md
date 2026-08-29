@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 — 2026-08-29
+
+- Retain distinct GPU allocations through all three memory checks and report only commonly completed memory.
+- Enumerate selectable adapters and read memory totals through Windows DXGI, Linux DRM, or `nvidia-smi`.
+- Stop automatic tests when a memory total is unavailable instead of substituting a small default.
+- Isolate demo license storage, improve report-file recovery, and restore 44 px download targets.
+- Publish Windows and Linux retained-allocation protocol evidence with each release.
+
 ## 0.1.3 — 2026-08-29
 
 - Tie every offered download to the exact deployed source commit.

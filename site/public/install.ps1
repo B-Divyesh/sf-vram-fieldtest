@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $repo = 'B-Divyesh/sf-vram-fieldtest'
-$expected = 'v0.1.3'
+$expected = 'v0.1.4'
 $releaseApi = if ($env:VRAM_FIELDTEST_RELEASE_API) { $env:VRAM_FIELDTEST_RELEASE_API } else { "https://api.github.com/repos/$repo/releases/latest" }
 $identityUrl = if ($env:VRAM_FIELDTEST_IDENTITY_URL) { $env:VRAM_FIELDTEST_IDENTITY_URL } else { 'https://vram-fieldtest.sociobot.in/release.json' }
 $commitApi = if ($env:VRAM_FIELDTEST_COMMIT_API) { $env:VRAM_FIELDTEST_COMMIT_API } else { "https://api.github.com/repos/$repo/commits/$expected" }
