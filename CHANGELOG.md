@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 — 2026-08-29
+
+- Tie every offered download to the exact deployed source commit.
+- Build release archives deterministically so package checksums are committed before the release tag.
+- Keep manual workflow runs as non-publishing package rehearsals.
+
 ## 0.1.2 — 2026-08-29
 
 - Publish high-VRAM planning and windowed coverage in every platform installer.

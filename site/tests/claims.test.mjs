@@ -82,20 +82,31 @@ test('@claim:installer-checksum shell installer downloads, verifies, and install
   execFileSync('tar', ['-C', stage, '-czf', join(dir, 'vram-fieldtest-linux-x86_64.tar.gz'), 'vram-fieldtest']);
   const archive = readFileSync(join(dir, 'vram-fieldtest-linux-x86_64.tar.gz'));
   const sum = createHash('sha256').update(archive).digest('hex');
+  const sourceCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const server = createServer((req, res) => {
     const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.2', assets: [
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.3', assets: [
       { browser_download_url: `${base}/vram-fieldtest-linux-x86_64.tar.gz` },
-      { browser_download_url: `${base}/SHA256SUMS` }
+      { browser_download_url: `${base}/SHA256SUMS` },
+      { browser_download_url: `${base}/PROVENANCE.json` }
     ] }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.3', source_commit: sourceCommit }, null, 2));
+    if (req.url === '/commit') return res.end(JSON.stringify({ sha: sourceCommit }, null, 2));
     if (req.url === '/vram-fieldtest-linux-x86_64.tar.gz') return res.end(archive);
     if (req.url === '/SHA256SUMS') return res.end(`${sum}  vram-fieldtest-linux-x86_64.tar.gz\n`);
+    if (req.url === '/PROVENANCE.json') return res.end(JSON.stringify({ source_commit: sourceCommit }, null, 2));
     res.writeHead(404).end();
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
     await new Promise((resolve, reject) => {
-      const child = spawn('sh', ['site/public/install.sh'], { env: { ...process.env, VRAM_FIELDTEST_RELEASE_API: `http://127.0.0.1:${server.address().port}/release`, VRAM_FIELDTEST_INSTALL_DIR: install } });
+      const child = spawn('sh', ['site/public/install.sh'], { env: {
+        ...process.env,
+        VRAM_FIELDTEST_RELEASE_API: `http://127.0.0.1:${server.address().port}/release`,
+        VRAM_FIELDTEST_IDENTITY_URL: `http://127.0.0.1:${server.address().port}/identity`,
+        VRAM_FIELDTEST_COMMIT_API: `http://127.0.0.1:${server.address().port}/commit`,
+        VRAM_FIELDTEST_INSTALL_DIR: install
+      } });
       let stderr = '';
       child.stderr.on('data', chunk => { stderr += chunk; });
       child.on('exit', code => code === 0 ? resolve() : reject(new Error(stderr)));
@@ -124,7 +135,39 @@ test('installer refuses a stale release instead of installing the wrong CLI', as
       child.on('exit', status => resolve({ status, stderr }));
     });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Downloads for v0\.1\.2 are not published yet/);
+    assert.match(result.stderr, /Downloads for v0\.1\.3 are not published yet/);
+    assert.equal(existsSync(join(dir, 'vram-fieldtest')), false);
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('regression: installer refuses the expected tag when it points at an ancestor commit', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vram-ancestor-installer-'));
+  const server = createServer((req, res) => {
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.3', assets: [] }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.3', source_commit: 'a'.repeat(40) }, null, 2));
+    if (req.url === '/commit') return res.end(JSON.stringify({ sha: 'b'.repeat(40) }, null, 2));
+    res.writeHead(404).end();
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const result = await new Promise(resolve => {
+      const base = `http://127.0.0.1:${server.address().port}`;
+      const child = spawn('sh', ['site/public/install.sh'], { env: {
+        ...process.env,
+        VRAM_FIELDTEST_RELEASE_API: `${base}/release`,
+        VRAM_FIELDTEST_IDENTITY_URL: `${base}/identity`,
+        VRAM_FIELDTEST_COMMIT_API: `${base}/commit`,
+        VRAM_FIELDTEST_INSTALL_DIR: dir
+      } });
+      let stderr = '';
+      child.stderr.on('data', chunk => { stderr += chunk; });
+      child.on('exit', status => resolve({ status, stderr }));
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /do not match this site build yet/);
     assert.equal(existsSync(join(dir, 'vram-fieldtest')), false);
   } finally {
     server.close();
@@ -170,8 +213,28 @@ test('@claim:release-provenance release gates the staged and published candidate
   assert.match(workflow, /PROVENANCE\.json/);
   assert.match(workflow, /tr -d '\\r'/);
   assert.match(workflow, /\.source_commit == \$commit/);
+  assert.match(workflow, /github\.event_name == 'push' && github\.ref_type == 'tag'/);
+  assert.match(workflow, /test "\$\(git rev-parse HEAD\)" = "\$GITHUB_SHA"/);
   assert.match(workflow, /sha256sum -c -/);
   assert.match(workflow, /\.requested_mib == 88474 and \.coverage_percent >= 90 and \.windows == 6/);
+  assert.match(workflow, /latest\.json/);
+});
+
+test('regression: native archive packaging is byte reproducible', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vram-reproducible-'));
+  try {
+    const binary = join(dir, 'vram-fieldtest');
+    writeFileSync(binary, '#!/bin/sh\necho stable\n', { mode: 0o755 });
+    for (const format of ['tar.gz', 'zip']) {
+      const one = join(dir, `one.${format}`);
+      const two = join(dir, `two.${format}`);
+      execFileSync('python3', ['scripts/package-release.py', format, binary, one, format === 'zip' ? 'vram-fieldtest.exe' : 'vram-fieldtest']);
+      execFileSync('python3', ['scripts/package-release.py', format, binary, two, format === 'zip' ? 'vram-fieldtest.exe' : 'vram-fieldtest']);
+      assert.equal(createHash('sha256').update(readFileSync(one)).digest('hex'), createHash('sha256').update(readFileSync(two)).digest('hex'));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('service worker update policy matches the package version', () => {
@@ -196,6 +259,10 @@ test('hashed site assets receive the immutable cache route', () => {
   assert.match(worker, /\/assets\/app\.[a-f0-9]{12}\.js/);
   assert.match(worker, /\/assets\/styles\.[a-f0-9]{12}\.css/);
   assert.match(readFileSync('staticwebapp.config.json', 'utf8'), /"\/assets\/\*"[\s\S]*immutable/);
+  const identity = JSON.parse(readFileSync('dist/site/release.json', 'utf8'));
+  assert.equal(identity.tag, `v${JSON.parse(readFileSync('package.json', 'utf8')).version}`);
+  assert.equal(identity.source_commit, execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim());
+  assert.match(readFileSync('staticwebapp.config.json', 'utf8'), /"\/release\.json"[\s\S]*no-store/);
 });
 
 test('known routes are physical files and unknown routes keep the platform 404', () => {

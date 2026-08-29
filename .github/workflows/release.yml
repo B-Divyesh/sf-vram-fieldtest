@@ -3,7 +3,7 @@ name: release
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
+  workflow_dispatch: # Builds every platform without publishing. Tag pushes publish.
 
 permissions:
   contents: write
@@ -20,6 +20,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Require an exact version tag for publication
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
+          test "$GITHUB_REF_TYPE" = tag
+          test "$GITHUB_REF_NAME" = "v${version}"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Test, build, and strict lint
         run: npm test && npm run build && cargo fmt --check && cargo clippy --locked -- -D warnings
 
@@ -47,15 +55,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Build binary
         run: cargo build --locked --release --target ${{ matrix.target }}
       - name: Package Unix archive
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          mkdir stage
-          cp target/${{ matrix.target }}/release/vram-fieldtest stage/
-          tar -C stage -czf vram-fieldtest-${{ matrix.label }}.tar.gz vram-fieldtest
+          python scripts/package-release.py tar.gz target/${{ matrix.target }}/release/vram-fieldtest vram-fieldtest-${{ matrix.label }}.tar.gz vram-fieldtest
           shasum -a 256 vram-fieldtest-${{ matrix.label }}.tar.gz > vram-fieldtest-${{ matrix.label }}.tar.gz.sha256
       - name: Build macOS installer package
         if: runner.os == 'macOS'
@@ -88,9 +97,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory stage
-          Copy-Item target/${{ matrix.target }}/release/vram-fieldtest.exe stage/
-          Compress-Archive -Path stage/vram-fieldtest.exe -DestinationPath vram-fieldtest-${{ matrix.label }}.zip
+          python scripts/package-release.py zip target/${{ matrix.target }}/release/vram-fieldtest.exe vram-fieldtest-${{ matrix.label }}.zip vram-fieldtest.exe
           (Get-FileHash vram-fieldtest-${{ matrix.label }}.zip -Algorithm SHA256).Hash.ToLower() + '  vram-fieldtest-${{ matrix.label }}.zip' | Set-Content vram-fieldtest-${{ matrix.label }}.zip.sha256
       - uses: actions/upload-artifact@v4
         with:
@@ -101,6 +108,7 @@ jobs:
 
   publish:
     needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,9 +147,11 @@ jobs:
           mkdir published-check
           curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/SHA256SUMS" -o published-check/SHA256SUMS
           curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/PROVENANCE.json" -o published-check/PROVENANCE.json
+          curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/latest.json" -o published-check/latest.json
           curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/vram-fieldtest-linux-x86_64.tar.gz" -o published-check/vram-fieldtest-linux-x86_64.tar.gz
           (cd published-check && grep ' vram-fieldtest-linux-x86_64.tar.gz$' SHA256SUMS | sha256sum -c -)
           tar -xzf published-check/vram-fieldtest-linux-x86_64.tar.gz -C published-check
           plan="$(published-check/vram-fieldtest plan --detected-mib 98304 --coverage 90 --window-mib 16384 --json)"
           printf '%s' "$plan" | jq -e '.requested_mib == 88474 and .coverage_percent >= 90 and .windows == 6' >/dev/null
           jq -e --arg commit "$GITHUB_SHA" '.source_commit == $commit and .plan_result.requested_mib == 88474 and .plan_result.windows == 6' published-check/PROVENANCE.json >/dev/null
+          jq -e --arg commit "$GITHUB_SHA" --arg version "${GITHUB_REF_NAME#v}" '.source_commit == $commit and .version == $version and ([.assets[] | contains("/releases/download/v" + $version + "/")] | all)' published-check/latest.json >/dev/null

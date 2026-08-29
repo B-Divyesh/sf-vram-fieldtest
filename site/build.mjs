@@ -1,5 +1,6 @@
 import { cp, mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const out = resolve(root, 'dist/site');
@@ -8,6 +9,9 @@ await mkdir(out, { recursive: true });
 await cp(resolve(root, 'site/src'), out, { recursive: true });
 await cp(resolve(root, 'site/public'), out, { recursive: true });
 await cp(resolve(root, 'staticwebapp.config.json'), resolve(out, 'staticwebapp.config.json'));
+const packageData = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
+const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+await writeFile(resolve(out, 'release.json'), `${JSON.stringify({ tag: `v${packageData.version}`, source_commit: sourceCommit }, null, 2)}\n`);
 const assetDir = resolve(out, 'assets');
 await mkdir(assetDir, { recursive: true });
 const hash = content => createHash('sha256').update(content).digest('hex').slice(0, 12);
