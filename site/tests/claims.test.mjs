@@ -6,6 +6,10 @@ import { createServer } from 'node:http';
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { createLicenseHandler, ALLOWANCE, WINDOW_SECONDS } = require('../../api/license-verify/index.js');
 
 test('regression: package lock is synchronized and supports npm ci', () => {
   const dir = mkdtempSync(join(tmpdir(), 'vram-lock-'));
@@ -80,7 +84,7 @@ test('@claim:installer-checksum shell installer downloads, verifies, and install
   const sum = createHash('sha256').update(archive).digest('hex');
   const server = createServer((req, res) => {
     const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === '/release') return res.end(JSON.stringify({ assets: [
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.2', assets: [
       { browser_download_url: `${base}/vram-fieldtest-linux-x86_64.tar.gz` },
       { browser_download_url: `${base}/SHA256SUMS` }
     ] }, null, 2));
@@ -103,12 +107,70 @@ test('@claim:installer-checksum shell installer downloads, verifies, and install
   }
 });
 
+test('installer refuses a stale release instead of installing the wrong CLI', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vram-stale-installer-'));
+  const server = createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ tag_name: 'v0.1.1', assets: [] }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const result = await new Promise(resolve => {
+      const child = spawn('sh', ['site/public/install.sh'], {
+        env: { ...process.env, VRAM_FIELDTEST_RELEASE_API: `http://127.0.0.1:${server.address().port}/release`, VRAM_FIELDTEST_INSTALL_DIR: dir }
+      });
+      let stderr = '';
+      child.stderr.on('data', chunk => { stderr += chunk; });
+      child.on('exit', status => resolve({ status, stderr }));
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Downloads for v0\.1\.2 are not published yet/);
+    assert.equal(existsSync(join(dir, 'vram-fieldtest')), false);
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('@claim:unlock-allowance server returns 429 and Retry-After past eight checks', async () => {
+  let upstreamCalls = 0;
+  const handler = createLicenseHandler({
+    now: () => 1_800_000_000_000,
+    fetchImpl: async () => {
+      upstreamCalls += 1;
+      return { status: 200, headers: { get: () => null }, text: async () => '{"valid":false,"reason":"invalid"}' };
+    }
+  });
+  const request = index => ({ query: { license: `invalid-license-${index}` }, headers: { 'x-forwarded-for': '203.0.113.9' } });
+  for (let index = 0; index < ALLOWANCE; index += 1) {
+    const result = await handler({ log: console }, request(index));
+    assert.equal(result.status, 200);
+  }
+  const limited = await handler({ log: console }, request(ALLOWANCE));
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers['Retry-After'], String(WINDOW_SECONDS));
+  assert.equal(JSON.parse(limited.body).reason, 'rate_limited');
+  assert.equal(upstreamCalls, ALLOWANCE);
+  const otherClient = await handler({ log: console }, { ...request(99), headers: { 'x-forwarded-for': '203.0.113.10' } });
+  assert.equal(otherClient.status, 200);
+});
+
 test('release workflow covers the required native assets', () => {
   const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
   for (const expected of ['macos-15-intel', 'macos-aarch64', 'windows-x86_64', 'linux-x86_64', '.deb', '.rpm', '.pkg', 'SHA256SUMS', 'latest.json']) {
     assert.match(workflow, new RegExp(expected.replace('.', '\\.')));
   }
   assert.doesNotMatch(workflow, /macos-13/);
+});
+
+test('@claim:release-provenance release gates the staged and published candidate plan command', () => {
+  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const exactPlan = 'plan --detected-mib 98304 --coverage 90 --window-mib 16384 --json';
+  assert.equal(workflow.split(exactPlan).length - 1, 3);
+  assert.match(workflow, /PROVENANCE\.json/);
+  assert.match(workflow, /\.source_commit == \$commit/);
+  assert.match(workflow, /sha256sum -c -/);
+  assert.match(workflow, /\.requested_mib == 88474 and \.coverage_percent >= 90 and \.windows == 6/);
 });
 
 test('service worker update policy matches the package version', () => {
@@ -133,4 +195,27 @@ test('hashed site assets receive the immutable cache route', () => {
   assert.match(worker, /\/assets\/app\.[a-f0-9]{12}\.js/);
   assert.match(worker, /\/assets\/styles\.[a-f0-9]{12}\.css/);
   assert.match(readFileSync('staticwebapp.config.json', 'utf8'), /"\/assets\/\*"[\s\S]*immutable/);
+});
+
+test('known routes are physical files and unknown routes keep the platform 404', () => {
+  execFileSync('npm', ['run', 'build:site'], { stdio: 'pipe' });
+  for (const route of ['demo', 'report-kit', 'privacy', 'terms']) {
+    assert.ok(existsSync(`dist/site/${route}/index.html`));
+  }
+  const config = JSON.parse(readFileSync('dist/site/staticwebapp.config.json', 'utf8'));
+  assert.equal(config.navigationFallback, undefined);
+  assert.deepEqual(config.responseOverrides['404'], { rewrite: '/404.html', statusCode: 404 });
+  const notFound = readFileSync('dist/site/404.html', 'utf8');
+  assert.match(notFound, /\/assets\/styles\.[a-f0-9]{12}\.css/);
+  assert.doesNotMatch(notFound, /href="\/styles\.css"/);
+});
+
+test('release-facing versions stay synchronized', () => {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  const cargo = readFileSync('Cargo.toml', 'utf8');
+  const app = readFileSync('site/src/app.js', 'utf8');
+  const shell = readFileSync('site/public/install.sh', 'utf8');
+  const powershell = readFileSync('site/public/install.ps1', 'utf8');
+  assert.match(cargo, new RegExp(`version = "${pkg.version.replaceAll('.', '\\.') }"`));
+  for (const source of [app, shell, powershell]) assert.match(source, new RegExp(`v${pkg.version.replaceAll('.', '\\.')}`));
 });

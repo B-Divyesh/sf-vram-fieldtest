@@ -20,6 +20,14 @@ await writeFile(resolve(assetDir, cssName), css);
 let index = await readFile(resolve(out, 'index.html'), 'utf8');
 index = index.replace('/styles.css', `/assets/${cssName}`).replace('/app.js', `/assets/${appName}`);
 await writeFile(resolve(out, 'index.html'), index);
+for (const route of ['demo', 'report-kit', 'privacy', 'terms']) {
+  const routeDir = resolve(out, route);
+  await mkdir(routeDir, { recursive: true });
+  await writeFile(resolve(routeDir, 'index.html'), index);
+}
+let notFound = await readFile(resolve(out, '404.html'), 'utf8');
+notFound = notFound.replace('/styles.css', `/assets/${cssName}`);
+await writeFile(resolve(out, '404.html'), notFound);
 let worker = await readFile(resolve(root, 'site/public/sw.js'), 'utf8');
 worker = worker.replaceAll('/app.js', `/assets/${appName}`).replaceAll('/styles.css', `/assets/${cssName}`);
 await writeFile(resolve(out, 'sw.js'), worker);

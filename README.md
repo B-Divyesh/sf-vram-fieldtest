@@ -32,6 +32,8 @@ irm https://vram-fieldtest.sociobot.in/install.ps1 | iex
 
 Both installers read the release metadata, download the matching archive, verify its SHA-256 checksum, and place the binary on your path. Windows and macOS builds are unsigned. On macOS, use right-click → Open if Gatekeeper blocks an unsigned binary.
 
+The site and installers accept only the release version they were built for. Each release includes `PROVENANCE.json` with its source commit and the 96 GiB `plan` result. The release job runs that command on the staged archive and again after downloading the published archive.
+
 Homebrew:
 
 ```sh
@@ -82,6 +84,8 @@ npm run build
 
 `npm run build:site` produces the static site at `dist/site` with `index.html` at that root. `npm run build` also produces the release binary at `target/release/vram-fieldtest`.
 
+The site build writes physical files for `/demo`, `/report-kit`, `/privacy`, and `/terms`. Unknown routes use `404.html` with HTTP 404. A managed Static Web Apps function at `/api/license/verify` applies the license-check allowance before it calls Sociobot.
+
 The clean-clone gate uses npm 10.9.8:
 
 ```sh
@@ -96,4 +100,4 @@ npm test -- --grep @claim:demo-report
 
 ## License and privacy
 
-MIT. See [LICENSE](LICENSE). The site has [privacy](https://vram-fieldtest.sociobot.in/privacy) and [terms](https://vram-fieldtest.sociobot.in/terms) pages. The optional $19 Report Kit reads a local report and creates a printable cover and batch labels. It never gates the core test or report export. The browser makes at most one background license check each 24 hours; if the service returns 429, it honors `Retry-After` before another check.
+MIT. See [LICENSE](LICENSE). The site has [privacy](https://vram-fieldtest.sociobot.in/privacy) and [terms](https://vram-fieldtest.sociobot.in/terms) pages. The optional $19 Report Kit reads a local report and creates a printable cover and batch labels. It never gates the core test or report export. The browser makes at most one background license check each 24 hours. The site server allows eight checks per network address in a rolling ten-minute window. The ninth check returns HTTP 429 with `Retry-After`; the browser waits until that time before another check.

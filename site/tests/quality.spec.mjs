@@ -2,11 +2,14 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 const releaseFixture = {
-  tag_name: 'v0.1.1',
+  tag_name: 'v0.1.2',
   assets: [
-    { name: 'vram-fieldtest-linux-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.1/vram-fieldtest-linux-x86_64.tar.gz' },
-    { name: 'vram-fieldtest-windows-x86_64.zip', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.1/vram-fieldtest-windows-x86_64.zip' },
-    { name: 'vram-fieldtest-macos-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.1/vram-fieldtest-macos-x86_64.tar.gz' }
+    { name: 'vram-fieldtest-linux-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.2/vram-fieldtest-linux-x86_64.tar.gz' },
+    { name: 'vram-fieldtest-windows-x86_64.zip', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.2/vram-fieldtest-windows-x86_64.zip' },
+    { name: 'vram-fieldtest-macos-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.2/vram-fieldtest-macos-x86_64.tar.gz' },
+    { name: 'SHA256SUMS', size: 800, browser_download_url: 'https://github.com/example/SHA256SUMS' },
+    { name: 'latest.json', size: 800, browser_download_url: 'https://github.com/example/latest.json' },
+    { name: 'PROVENANCE.json', size: 800, browser_download_url: 'https://github.com/example/PROVENANCE.json' }
   ]
 };
 
@@ -18,8 +21,16 @@ test('@claim:release-download landing picks a real platform release asset', asyn
   await page.goto('/');
   const download = page.getByRole('link', { name: 'Download for windows' });
   await expect(download).toBeVisible();
-  await expect(download).toHaveAttribute('href', /v0\.1\.1\/vram-fieldtest-windows-x86_64\.zip$/);
-  await expect(page.getByText('v0.1.1 · 2 MB')).toBeVisible();
+  await expect(download).toHaveAttribute('href', /v0\.1\.2\/vram-fieldtest-windows-x86_64\.zip$/);
+  await expect(page.getByText('v0.1.2 · 2 MB')).toBeVisible();
+});
+
+test('landing refuses a stale release instead of linking the wrong CLI', async ({ page }) => {
+  await page.unroute('https://api.github.com/repos/**/releases/latest');
+  await page.route('https://api.github.com/repos/**/releases/latest', route => route.fulfill({ json: { ...releaseFixture, tag_name: 'v0.1.1' } }));
+  await page.goto('/');
+  await expect(page.getByText('Downloads are being published.')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Download for/ })).toHaveCount(0);
 });
 
 test('@claim:site-offline demo reloads offline after the first visit', async ({ page, context }) => {
@@ -59,7 +70,7 @@ test('@claim:report-kit-output active Report Kit turns local JSON into a cover a
 
 test('@claim:license-rate-limit Retry-After prevents repeated license checks', async ({ page }) => {
   let checks = 0;
-  await page.route('https://api.sociobot.in/api/v1/products/vram-fieldtest/verify**', route => {
+  await page.route('**/api/license/verify**', route => {
     checks += 1;
     return route.fulfill({ status: 429, headers: { 'Access-Control-Expose-Headers': 'Retry-After', 'Retry-After': '120' }, body: '{}' });
   });
@@ -98,6 +109,15 @@ test('release API failure renders a calm state without console errors', async ({
   await page.goto('/');
   await expect(page.getByText('Downloads are being published.')).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('unknown route is a real HTTP 404 with a usable page', async ({ page, request }) => {
+  const response = await request.get('/missing-page');
+  expect(response.status()).toBe(404);
+  await page.goto('/missing-page');
+  await expect(page).toHaveTitle('Not found — VRAM Field Test');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('This page is not on the bench.');
+  await expect(page.getByRole('link', { name: 'Return to field test' })).toBeVisible();
 });
 
 for (const route of ['/', '/demo', '/report-kit', '/privacy', '/terms', '/missing-page']) {

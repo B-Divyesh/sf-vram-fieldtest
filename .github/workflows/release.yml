@@ -117,9 +117,31 @@ jobs:
           tag="v${version}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}"
-          printf '{"version":"%s","assets":{"linux-x86_64":"%s/vram-fieldtest-linux-x86_64.tar.gz","linux-deb":"%s/vram-fieldtest_%s_amd64.deb","linux-rpm":"%s/vram-fieldtest-%s-1.x86_64.rpm","windows-x86_64":"%s/vram-fieldtest-windows-x86_64.zip","macos-x86_64":"%s/vram-fieldtest-macos-x86_64.tar.gz","macos-aarch64":"%s/vram-fieldtest-macos-aarch64.tar.gz","macos-x86_64-pkg":"%s/vram-fieldtest-macos-x86_64.pkg","macos-aarch64-pkg":"%s/vram-fieldtest-macos-aarch64.pkg"}}\n' "$version" "$base" "$base" "$version" "$base" "$version" "$base" "$base" "$base" "$base" "$base" > release/latest.json
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
+          commit="$(git rev-parse HEAD)"
+          mkdir release-check
+          tar -xzf release/vram-fieldtest-linux-x86_64.tar.gz -C release-check
+          command='vram-fieldtest plan --detected-mib 98304 --coverage 90 --window-mib 16384 --json'
+          plan="$(release-check/vram-fieldtest plan --detected-mib 98304 --coverage 90 --window-mib 16384 --json)"
+          printf '%s' "$plan" | jq -e '.requested_mib == 88474 and .coverage_percent >= 90 and .windows == 6' >/dev/null
+          jq -n --arg version "$version" --arg source_commit "$commit" --arg command "$command" --argjson result "$plan" \
+            '{version:$version,source_commit:$source_commit,plan_command:$command,plan_result:$result}' > release/PROVENANCE.json
+          jq -n --arg version "$version" --arg source_commit "$commit" --arg base "$base" \
+            '{version:$version,source_commit:$source_commit,assets:{"linux-x86_64":($base+"/vram-fieldtest-linux-x86_64.tar.gz"),"linux-deb":($base+"/vram-fieldtest_"+$version+"_amd64.deb"),"linux-rpm":($base+"/vram-fieldtest-"+$version+"-1.x86_64.rpm"),"windows-x86_64":($base+"/vram-fieldtest-windows-x86_64.zip"),"macos-x86_64":($base+"/vram-fieldtest-macos-x86_64.tar.gz"),"macos-aarch64":($base+"/vram-fieldtest-macos-aarch64.tar.gz"),"macos-x86_64-pkg":($base+"/vram-fieldtest-macos-x86_64.pkg"),"macos-aarch64-pkg":($base+"/vram-fieldtest-macos-aarch64.pkg")}}' > release/latest.json
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.metadata.outputs.tag }}
           generate_release_notes: true
           files: release/*
+      - name: Verify the published archive is this candidate
+        shell: bash
+        run: |
+          mkdir published-check
+          curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/SHA256SUMS" -o published-check/SHA256SUMS
+          curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/PROVENANCE.json" -o published-check/PROVENANCE.json
+          curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/vram-fieldtest-linux-x86_64.tar.gz" -o published-check/vram-fieldtest-linux-x86_64.tar.gz
+          (cd published-check && grep ' vram-fieldtest-linux-x86_64.tar.gz$' SHA256SUMS | sha256sum -c -)
+          tar -xzf published-check/vram-fieldtest-linux-x86_64.tar.gz -C published-check
+          plan="$(published-check/vram-fieldtest plan --detected-mib 98304 --coverage 90 --window-mib 16384 --json)"
+          printf '%s' "$plan" | jq -e '.requested_mib == 88474 and .coverage_percent >= 90 and .windows == 6' >/dev/null
+          jq -e --arg commit "$GITHUB_SHA" '.source_commit == $commit and .plan_result.requested_mib == 88474 and .plan_result.windows == 6' published-check/PROVENANCE.json >/dev/null

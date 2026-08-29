@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-08-29
+
+- Publish high-VRAM planning and windowed coverage in every platform installer.
+- Reject stale release metadata before offering a download.
+- Enforce a server-side license-check allowance with 429 and `Retry-After`.
+- Return a real HTTP 404 for unknown routes while keeping every public route reloadable.
+
 ## 0.1.1 — 2026-08-28
 
 - Add the synchronized npm lockfile and a clean-install regression gate.

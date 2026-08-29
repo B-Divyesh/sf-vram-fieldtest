@@ -49,6 +49,13 @@
     "sandbox": "mock GitHub's CORS API with a Linux release and assert the rendered asset URL and version"
   },
   {
+    "id": "release-provenance",
+    "claim": "Release publication records the source commit and runs the 96 GiB plan command on the staged and downloaded archive.",
+    "where": "README release process",
+    "test": "npm test -- --grep @claim:release-provenance",
+    "sandbox": "inspect the release workflow for the exact staged and post-publication plan checks, checksum verification, and source commit assertion"
+  },
+  {
     "id": "site-offline",
     "claim": "The demo page works offline after the first visit.",
     "where": "Demo page, README",
@@ -75,5 +82,12 @@
     "where": "Privacy page, Terms",
     "test": "npm test -- --grep @claim:license-rate-limit",
     "sandbox": "mock a 429 verification response with Retry-After; assert the browser stores the hold and makes no second request"
+  },
+  {
+    "id": "unlock-allowance",
+    "claim": "The site server allows eight license checks per network address in ten minutes, then returns 429 with Retry-After.",
+    "where": "Privacy page, Terms, README",
+    "test": "npm test -- --grep @claim:unlock-allowance",
+    "sandbox": "invoke the server handler nine times for one forwarded client address; assert eight upstream calls followed by 429 and Retry-After"
   }
 ]

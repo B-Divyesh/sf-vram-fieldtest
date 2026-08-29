@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $repo = 'B-Divyesh/sf-vram-fieldtest'
+$expected = 'v0.1.2'
 $release = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest"
+if ($release.tag_name -ne $expected) { throw "Downloads for $expected are not published yet. See https://github.com/$repo/releases" }
 $asset = $release.assets | Where-Object { $_.name -match 'windows-x86_64\.zip$' } | Select-Object -First 1
 $sums = $release.assets | Where-Object { $_.name -eq 'SHA256SUMS' } | Select-Object -First 1
 if (-not $asset -or -not $sums) { throw 'Matching download is being published. See https://github.com/' + $repo + '/releases' }
