@@ -38,6 +38,17 @@ Other evidence:
 - Axe runs report no serious or critical issues on `/`, `/demo`, `/report-kit`, `/privacy`, `/terms`, and the actual 404.
 - Screenshot captures: `artifacts/polish-1-mobile-390x844.png` and `artifacts/polish-1-demo.png`.
 
+## Live deployment evidence
+
+Deployed through `/opt/fleet/lib/deploy-static.sh vram-fieldtest /work/repo/dist/site`. Production now serves `app.afc57b391150.js`.
+
+- `/opt/fleet/lib/verify-url.sh` passed cold load in 845 ms with no console errors, `lang=en`, one h1, one main, and no missing alt text or unlabeled buttons. Its live captures are under `artifacts/live-polish-1/`.
+- `npm run verify:live -- https://vram-fieldtest.sociobot.in` passed all six route checks, Axe serious/critical checks, keyboard focus, offline demo reload, privacy request log, and console checks.
+- A separate cold 390 × 844 production check measured the CTA at `y=521.97`, `height=49.5`; it opened `https://vram-fieldtest.sociobot.in/?demo=1` and showed the persistent demo banner.
+- Raw live responses have distinct route titles for landing, Demo, Report Kit, Privacy, Terms, and the actual 404.
+
+`npx @axe-core/cli` could not start a Chrome binary in this container. The installed `@axe-core/playwright` integration is the equivalent configured accessibility verifier and passed locally and on the live site.
+
 ## Deploy
 
 Work order configuration: static deploy, `npm ci && npm run build:site`, publish `dist/site`. Push `main` at the repair commit to deploy.
