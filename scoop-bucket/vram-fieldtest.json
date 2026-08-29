@@ -4,6 +4,6 @@
   "homepage": "https://vram-fieldtest.sociobot.in",
   "license": "MIT",
   "url": "https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.6/vram-fieldtest-windows-x86_64.zip",
-  "hash": "41bd4b7522d529c82d43aa089f9c807fb19d5e3de305adeadbd1a7b4103573a7",
+  "hash": "280e68772f874f7bcca61923ec930e1315baa86dc6fd19dec6068c2941458cc2",
   "bin": "vram-fieldtest.exe"
 }
