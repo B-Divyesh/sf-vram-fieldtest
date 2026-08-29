@@ -68,14 +68,34 @@ test('@claim:site-offline demo reloads offline after the first visit', async ({ 
 test('@claim:demo-privacy demo makes only same-origin requests and isolates its resettable storage', async ({ page }) => {
   const origins = [];
   page.on('request', request => origins.push(new URL(request.url()).origin));
-  await page.addInitScript(() => localStorage.setItem('sb_license:vram-fieldtest', 'real-license'));
+  await page.addInitScript(() => {
+    localStorage.setItem('sb_license:vram-fieldtest', 'real-license');
+    const getItem = Storage.prototype.getItem;
+    const setItem = Storage.prototype.setItem;
+    const removeItem = Storage.prototype.removeItem;
+    window.__storageAccesses = [];
+    Storage.prototype.getItem = function(key) {
+      window.__storageAccesses.push({ operation: 'read', key });
+      return getItem.call(this, key);
+    };
+    Storage.prototype.setItem = function(key, value) {
+      window.__storageAccesses.push({ operation: 'write', key });
+      return setItem.call(this, key, value);
+    };
+    Storage.prototype.removeItem = function(key) {
+      window.__storageAccesses.push({ operation: 'remove', key });
+      return removeItem.call(this, key);
+    };
+  });
   await page.goto('/?demo=1');
   await page.waitForLoadState('networkidle');
   expect([...new Set(origins)]).toEqual(['http://127.0.0.1:4173']);
   await expect(page.getByText('Demo — sample data, nothing is saved.')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('demo:vram-fieldtest'))).toContain('Example GPU 12 GB');
+  expect(await page.evaluate(() => window.__storageAccesses.filter(access => access.key !== 'demo:vram-fieldtest'))).toEqual([]);
   await page.getByRole('button', { name: 'Reset demo' }).click();
   expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('sb_license:')))).toEqual(['sb_license:vram-fieldtest']);
+  expect(await page.evaluate(() => window.__storageAccesses.filter(access => access.key !== 'demo:vram-fieldtest'))).toEqual([]);
 });
 
 test('@claim:no-account core demo opens without credentials or account storage', async ({ page }) => {
@@ -97,6 +117,21 @@ test('@claim:report-kit-output active Report Kit turns local JSON into a cover a
   await expect(page.locator('.batch-labels li')).toHaveCount(3);
   await expect(page.getByRole('button', { name: 'Print cover and labels' })).toBeVisible();
   expect(requests.some(url => url.includes('/verify?'))).toBeFalsy();
+});
+
+test('Report Kit replaces malformed JSON parser text with a recovery instruction', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('sb_license:vram-fieldtest', 'fixture-license');
+    localStorage.setItem('sb_license_check:vram-fieldtest', JSON.stringify({ at: Date.now(), valid: true }));
+  });
+  await page.goto('/report-kit');
+  await page.locator('#report-file').setInputFiles({
+    name: 'report.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{oops')
+  });
+  await expect(page.locator('#kit-note')).toHaveText('This file could not be read. Choose a valid VRAM Field Test report.json file.');
+  await expect(page.locator('#kit-note')).not.toContainText('Expected property');
 });
 
 test('@claim:report-kit-price Report Kit shows a $19 checkout while the core demo report stays free', async ({ page }) => {

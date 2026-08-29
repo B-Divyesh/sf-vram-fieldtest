@@ -1,3 +1,4 @@
+button,.button{display:inline-flex;align-items:center;justify-content:center}
 :root{--paper:#f4ead6;--ink:#181714;--muted:#4d493f;--orange:#b83212;--blue:#12587d;--acid:#d6df54;--pass:#176a44;--fail:#9c251d;--line:2px solid var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--paper)}
 .technical{margin-top:20px;max-width:68ch}.technical summary{font-weight:800;cursor:pointer}@media(max-width:700px){.hero{padding-top:22px;padding-bottom:28px}.hero h1{font-size:clamp(36px,11vw,52px)}.hero-art{min-height:190px;order:2;margin-top:20px}.facts{margin-top:18px}}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

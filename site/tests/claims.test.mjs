@@ -91,12 +91,26 @@ test('@claim:safety-consent real runs require explicit consent', () => {
   assert.match(result.stderr, /pass --yes/);
 });
 
-test('@claim:high-vram-coverage 96 GiB plans cover at least 90 percent in multiple windows', () => {
-  const output = execFileSync('target/debug/vram-fieldtest', ['plan', '--detected-mib', '98304', '--coverage', '90', '--window-mib', '16384', '--json'], { encoding: 'utf8' });
-  const plan = JSON.parse(output);
-  assert.ok(plan.coverage_percent >= 90);
-  assert.equal(plan.requested_mib, 88474);
-  assert.equal(plan.windows, 6);
+test('regression: automatic coverage cannot silently fall back to a small fixed amount', () => {
+  const source = readFileSync('src/main.rs', 'utf8');
+  assert.doesNotMatch(source, /DEFAULT_MIB/);
+  const output = execFileSync('cargo', ['test', '--quiet', 'tests::automatic_run_refuses_an_unknown_memory_total', '--', '--exact'], { encoding: 'utf8' });
+  assert.match(output, /1 passed/);
+  assert.match(source, /Run `vram-fieldtest inspect`, confirm the card's memory, then pass `--mib <amount>`/);
+});
+
+test('regression: adapter inventory is indexed and uses Windows DXGI plus Linux driver totals', () => {
+  const source = readFileSync('src/main.rs', 'utf8');
+  assert.match(source, /enumerate_adapters\(wgpu::Backends::PRIMARY\)/);
+  assert.match(source, /Windows DXGI DedicatedVideoMemory/);
+  assert.match(source, /Linux DRM .* mem_info_vram_total/);
+  assert.match(source, /nvidia-smi reported memory\.total/);
+  assert.match(source, /Adapter index shown by `vram-fieldtest inspect`/);
+});
+
+test('@claim:high-vram-coverage completed protocol retains distinct memory and reports at least 90 percent', () => {
+  const output = execFileSync('cargo', ['test', '--quiet', 'tests::retained_high_vram_protocol_reports_only_common_completed_coverage', '--', '--exact'], { encoding: 'utf8' });
+  assert.match(output, /1 passed/);
 });
 
 test('@claim:installer-checksum shell installer downloads, verifies, and installs', async () => {
@@ -244,6 +258,10 @@ test('@claim:release-provenance release gates the staged and published candidate
   assert.match(workflow, /sha256sum -c -/);
   assert.match(workflow, /\.requested_mib == 88474 and \.coverage_percent >= 90 and \.windows == 6/);
   assert.match(workflow, /latest\.json/);
+  assert.match(workflow, /os: ubuntu-latest[\s\S]*os: windows-latest/);
+  assert.match(workflow, /run --yes --allow-software --adapter 0 --mib 4/);
+  assert.match(workflow, /protocol_runs/);
+  assert.match(workflow, /\.residency\.retained_through_patterns == true/);
 });
 
 test('regression: native archive packaging is byte reproducible', () => {

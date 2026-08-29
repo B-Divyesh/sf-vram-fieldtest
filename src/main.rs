@@ -11,7 +11,6 @@ use std::{
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const DEFAULT_MIB: u64 = 256;
 const DEFAULT_COVERAGE: u8 = 90;
 const DEFAULT_WINDOW_MIB: u64 = 1024;
 const MAX_CHUNK_MIB: u64 = 64;
@@ -45,6 +44,12 @@ enum Cmd {
 struct RunArgs {
     #[arg(long)]
     yes: bool,
+    /// Adapter index shown by `vram-fieldtest inspect`.
+    #[arg(long, default_value_t = 0)]
+    adapter: usize,
+    /// Permit a software adapter. Intended for release protocol checks, not hardware reports.
+    #[arg(long, hide = true)]
+    allow_software: bool,
     #[arg(long, default_value = "./vram-fieldtest-report")]
     output: PathBuf,
     /// Total MiB to cover across windows. Defaults to 90% of detected VRAM.
@@ -53,7 +58,7 @@ struct RunArgs {
     /// Percent of detected VRAM to cover when --mib is not supplied.
     #[arg(long, default_value_t = DEFAULT_COVERAGE, value_parser = clap::value_parser!(u8).range(1..=100))]
     coverage: u8,
-    /// Largest allocator window in MiB. The total test can span many windows.
+    /// Largest monitored test batch in MiB. Distinct allocations stay live across batches.
     #[arg(long, default_value_t = DEFAULT_WINDOW_MIB, value_parser = clap::value_parser!(u64).range(1..=MAX_WINDOW_MIB))]
     window_mib: u64,
     /// Stop safely at this total duration, including an in-progress pattern.
@@ -84,6 +89,8 @@ struct Report {
     host: Host,
     adapter: Adapter,
     limits: Limits,
+    #[serde(default)]
+    residency: ResidencyEvidence,
     patterns: Vec<Pattern>,
     #[serde(default)]
     telemetry: Telemetry,
@@ -97,8 +104,16 @@ struct Host {
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Adapter {
+    #[serde(default)]
+    index: usize,
     name: String,
     backend: String,
+    #[serde(default)]
+    device_type: String,
+    #[serde(default)]
+    vendor_id: u32,
+    #[serde(default)]
+    device_id: u32,
     detected_vram_mib: Option<u64>,
     source: String,
 }
@@ -114,6 +129,10 @@ struct Limits {
     window_mib: u64,
     #[serde(default)]
     chunk_mib: u64,
+    #[serde(default)]
+    resident_mib: u64,
+    #[serde(default)]
+    resident_allocations: u64,
     thermal_limit_c: u8,
     max_seconds: u64,
 }
@@ -125,6 +144,13 @@ struct Pattern {
     status: String,
     #[serde(default)]
     windows: u32,
+}
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+struct ResidencyEvidence {
+    strategy: String,
+    allocated_bytes: u64,
+    allocation_count: u64,
+    retained_through_patterns: bool,
 }
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct Telemetry {
@@ -145,7 +171,7 @@ struct Verdict {
     status: String,
     summary: String,
 }
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 struct CoveragePlan {
     detected_mib: u64,
     requested_mib: u64,
@@ -164,17 +190,24 @@ fn main() -> Result<()> {
     Ok(())
 }
 fn print_inventory(json: bool) {
-    let a = inventory();
+    let adapters: Vec<Adapter> = enumerate_gpu_candidates()
+        .into_iter()
+        .map(|candidate| candidate.report)
+        .collect();
     if json {
         println!(
             "{}",
-            serde_json::to_string_pretty(&a).expect("inventory serializes")
+            serde_json::to_string_pretty(&adapters).expect("inventory serializes")
         );
+    } else if adapters.is_empty() {
+        println!("No GPU adapter is available. Check the graphics driver, then try again.");
     } else {
-        println!("{} ({})", a.name, a.backend);
-        match a.detected_vram_mib {
-            Some(m) => println!("Detected VRAM: {m} MiB ({})", a.source),
-            None => println!("VRAM: unavailable ({})", a.source),
+        for adapter in adapters {
+            println!("[{}] {} ({})", adapter.index, adapter.name, adapter.backend);
+            match adapter.detected_vram_mib {
+                Some(m) => println!("    Reported GPU memory: {m} MiB ({})", adapter.source),
+                None => println!("    GPU memory: unavailable ({})", adapter.source),
+            }
         }
     }
 }
@@ -232,6 +265,39 @@ fn coverage_plan(
     }
 }
 
+fn resolve_requested_mib(
+    detected_mib: Option<u64>,
+    requested_mib: Option<u64>,
+    coverage: u8,
+    window_mib: u64,
+) -> Result<(Option<CoveragePlan>, u64)> {
+    match detected_mib {
+        Some(detected) => {
+            let plan = coverage_plan(detected, requested_mib, coverage, window_mib);
+            let requested = plan.requested_mib;
+            Ok((Some(plan), requested))
+        }
+        None => requested_mib.map_or_else(
+            || {
+                bail!("the driver did not report GPU memory. Run `vram-fieldtest inspect`, confirm the card's memory, then pass `--mib <amount>`")
+            },
+            |requested| Ok((None, requested)),
+        ),
+    }
+}
+
+fn completed_tested_mib(patterns: &[Pattern]) -> u64 {
+    if patterns.len() == 3 {
+        patterns
+            .iter()
+            .map(|pattern| pattern.bytes / MIB)
+            .min()
+            .unwrap_or(0)
+    } else {
+        0
+    }
+}
+
 fn run(args: RunArgs) -> Result<()> {
     if !args.yes {
         bail!("Not started: pass --yes after you have a clear view of the GPU and its cooling.");
@@ -239,23 +305,35 @@ fn run(args: RunArgs) -> Result<()> {
     let started = Utc::now();
     let clock = Instant::now();
     let deadline = clock + Duration::from_secs(args.seconds);
-    let (gpu, adapter) = open_gpu()?;
-    let plan = adapter
-        .detected_vram_mib
-        .map(|v| coverage_plan(v, args.mib, args.coverage, args.window_mib));
-    let requested_mib = plan
-        .as_ref()
-        .map(|p| p.requested_mib)
-        .or(args.mib)
-        .unwrap_or(DEFAULT_MIB);
-    let actual_window_mib = gpu.max_mib.min(args.window_mib).max(1);
-    if actual_window_mib < args.window_mib {
-        eprintln!("This adapter exposes {actual_window_mib} MiB for one safe storage window; continuing in more windows.");
+    let (gpu, adapter) = open_gpu(args.adapter, args.allow_software)?;
+    let (_plan, requested_mib) = resolve_requested_mib(
+        adapter.detected_vram_mib,
+        args.mib,
+        args.coverage,
+        args.window_mib,
+    )
+    .with_context(|| format!("Not started for adapter {}", adapter.index))?;
+    let chunk_mib = gpu.max_chunk_mib.min(args.window_mib).max(1);
+    if chunk_mib < args.window_mib {
+        eprintln!("This adapter uses {chunk_mib} MiB resident allocations inside each test batch.");
     }
     let thermal_limit = 85;
     let mut telemetry = telemetry_snapshot(clock.elapsed().as_millis(), "before run");
     let mut patterns = Vec::new();
     let mut stop_reason = thermal_stop(&telemetry, thermal_limit);
+    let residency = allocate_resident_set(
+        &gpu,
+        requested_mib * MIB,
+        chunk_mib * MIB,
+        args.window_mib * MIB,
+        deadline,
+    )?;
+    if !residency.complete {
+        stop_reason =
+            Some(residency.stop_reason.clone().unwrap_or_else(|| {
+                "The requested distinct GPU memory could not be allocated.".into()
+            }));
+    }
     for (name, word) in [
         ("solid AA", 0xAAAA_AAAAu32),
         ("solid 55", 0x5555_5555u32),
@@ -270,14 +348,12 @@ fn run(args: RunArgs) -> Result<()> {
             clock: &clock,
             thermal_limit,
         };
-        let outcome = exercise_pattern(
-            &gpu,
-            requested_mib,
-            actual_window_mib,
-            word,
-            name,
-            &mut control,
-        )?;
+        let outcome =
+            exercise_pattern(&gpu, &residency, args.window_mib, word, name, &mut control)?;
+        if outcome.status == "fail" {
+            patterns.push(outcome);
+            break;
+        }
         if outcome.status != "pass" {
             stop_reason = Some(format!("Stopped safely during {name}: {}", outcome.status));
         }
@@ -289,26 +365,26 @@ fn run(args: RunArgs) -> Result<()> {
             args.seconds
         ));
     }
-    let tested_mib = patterns.iter().map(|p| p.bytes / MIB).min().unwrap_or(0);
+    let tested_mib = completed_tested_mib(&patterns);
     let coverage = adapter
         .detected_vram_mib
         .map(|v| (tested_mib as f64 / v as f64 * 100.0).min(100.0));
     let bad: u64 = patterns.iter().map(|p| p.mismatches).sum();
-    let status = if stop_reason.is_some() {
-        "incomplete"
-    } else if bad == 0 {
-        "pass"
-    } else {
+    let status = if bad > 0 {
         "fail"
+    } else if stop_reason.is_some() {
+        "incomplete"
+    } else {
+        "pass"
     };
     telemetry
         .samples
         .push(telemetry_sample(clock.elapsed().as_millis(), "after run"));
     let summary = match status {
         "pass" => format!(
-            "No mismatches in {tested_mib} MiB across {} patterns and {} window(s).",
+            "No mismatches in {tested_mib} MiB across {} patterns and {} retained allocation(s).",
             patterns.len(),
-            plan.as_ref().map_or(0, |p| p.windows)
+            residency.allocations.len()
         ),
         "incomplete" => format!(
             "{} {} MiB was verified before the stop.",
@@ -317,7 +393,7 @@ fn run(args: RunArgs) -> Result<()> {
         ),
         _ => format!("{bad} mismatches found. Do not rely on this GPU until it is retested."),
     };
-    let mut notes = vec!["The tool retains no telemetry and writes only the requested local report.".into(), "Coverage is the aggregate amount verified in bounded allocator windows. It reports the actual completed bytes, not an assumed full-card allocation.".into(), "Each pattern is split into 64 MiB chunks so the duration and thermal guards can stop between GPU submissions and during CPU verification.".into(), "A pass is evidence for this bounded pattern run. It does not certify every GPU fault.".into()];
+    let mut notes = vec!["The tool retains no telemetry and writes only the requested local report.".into(), "Counted coverage includes only distinct GPU allocations kept live until every completed memory pattern ended.".into(), "Each allocation is at most 64 MiB so duration and thermal guards can stop between GPU submissions and during CPU verification.".into(), "A pass is evidence for this bounded pattern run. It does not certify every GPU fault.".into()];
     if telemetry.unavailable_reason.is_some() {
         notes.push("Temperature and clock telemetry was unavailable from this machine's local driver tools; the report records that absence instead of inventing readings.".into());
     }
@@ -337,10 +413,18 @@ fn run(args: RunArgs) -> Result<()> {
             detected_vram_mib: adapter.detected_vram_mib,
             coverage_percent: coverage,
             coverage_target_percent: adapter.detected_vram_mib.map(|_| args.coverage),
-            window_mib: actual_window_mib,
-            chunk_mib: MAX_CHUNK_MIB.min(actual_window_mib),
+            window_mib: args.window_mib,
+            chunk_mib,
+            resident_mib: residency.bytes / MIB,
+            resident_allocations: residency.allocations.len() as u64,
             thermal_limit_c: thermal_limit,
             max_seconds: args.seconds,
+        },
+        residency: ResidencyEvidence {
+            strategy: "distinct live WebGPU allocations".into(),
+            allocated_bytes: residency.bytes,
+            allocation_count: residency.allocations.len() as u64,
+            retained_through_patterns: residency.complete,
         },
         patterns,
         telemetry,
@@ -354,7 +438,7 @@ fn run(args: RunArgs) -> Result<()> {
     if args.json {
         println!(
             "{}",
-            serde_json::json!({"output":args.output,"status":status,"coverage_percent":coverage,"mismatches":bad,"tested_mib":tested_mib})
+            serde_json::json!({"output":args.output,"status":status,"coverage_percent":coverage,"mismatches":bad,"tested_mib":tested_mib,"resident_mib":residency.bytes / MIB,"resident_allocations":residency.allocations.len(),"retention":"all allocations kept live through the pattern run"})
         );
     } else {
         println!(
@@ -385,18 +469,17 @@ struct ExerciseControl<'a> {
 
 fn exercise_pattern(
     gpu: &Gpu,
-    target_mib: u64,
+    residency: &ResidentSet,
     window_mib: u64,
     word: u32,
     name: &str,
     control: &mut ExerciseControl<'_>,
 ) -> Result<Pattern> {
-    let target_bytes = target_mib * MIB;
-    let chunk_bytes = MAX_CHUNK_MIB.min(window_mib) * MIB;
     let mut tested = 0u64;
     let mut mismatches = 0u64;
     let mut windows = 0u32;
-    while tested < target_bytes {
+    let window_bytes = window_mib * MIB;
+    for allocation in &residency.allocations {
         if Instant::now() >= control.deadline {
             return Ok(Pattern {
                 name: name.into(),
@@ -406,59 +489,57 @@ fn exercise_pattern(
                 windows,
             });
         }
-        let pre = telemetry_sample(
-            control.clock.elapsed().as_millis(),
-            format!("before {name} window {}", windows + 1),
-        );
-        if pre
-            .temperature_c
-            .is_some_and(|t| t >= f64::from(control.thermal_limit))
-        {
-            control.telemetry.samples.push(pre);
-            return Ok(Pattern {
-                name: name.into(),
-                bytes: tested,
-                mismatches,
-                status: "thermal limit".into(),
-                windows,
-            });
-        }
-        control.telemetry.samples.push(pre);
-        let window_bytes = (target_bytes - tested).min(window_mib * MIB);
-        let mut in_window = 0u64;
-        while in_window < window_bytes {
-            let bytes = (window_bytes - in_window).min(chunk_bytes);
-            let result = exercise_gpu_chunk(gpu, bytes, word, name, control.deadline)?;
-            tested += result.bytes;
-            in_window += result.bytes;
-            mismatches += result.mismatches;
-            if !result.complete {
+        if tested.is_multiple_of(window_bytes) {
+            let pre = telemetry_sample(
+                control.clock.elapsed().as_millis(),
+                format!("before {name} batch {}", windows + 1),
+            );
+            if pre
+                .temperature_c
+                .is_some_and(|t| t >= f64::from(control.thermal_limit))
+            {
+                control.telemetry.samples.push(pre);
                 return Ok(Pattern {
                     name: name.into(),
                     bytes: tested,
                     mismatches,
-                    status: "time limit".into(),
-                    windows: windows + 1,
+                    status: "thermal limit".into(),
+                    windows,
                 });
             }
+            control.telemetry.samples.push(pre);
         }
-        windows += 1;
-        let post = telemetry_sample(
-            control.clock.elapsed().as_millis(),
-            format!("after {name} window {windows}"),
-        );
-        let hot = post
-            .temperature_c
-            .is_some_and(|t| t >= f64::from(control.thermal_limit));
-        control.telemetry.samples.push(post);
-        if hot {
+        let result = exercise_gpu_allocation(gpu, allocation, word, name, control.deadline)?;
+        tested += result.bytes;
+        mismatches += result.mismatches;
+        if !result.complete {
             return Ok(Pattern {
                 name: name.into(),
                 bytes: tested,
                 mismatches,
-                status: "thermal limit".into(),
-                windows,
+                status: "time limit".into(),
+                windows: tested.div_ceil(window_bytes) as u32,
             });
+        }
+        if tested.is_multiple_of(window_bytes) || tested == residency.bytes {
+            windows += 1;
+            let post = telemetry_sample(
+                control.clock.elapsed().as_millis(),
+                format!("after {name} batch {windows}"),
+            );
+            let hot = post
+                .temperature_c
+                .is_some_and(|t| t >= f64::from(control.thermal_limit));
+            control.telemetry.samples.push(post);
+            if hot {
+                return Ok(Pattern {
+                    name: name.into(),
+                    bytes: tested,
+                    mismatches,
+                    status: "thermal limit".into(),
+                    windows,
+                });
+            }
         }
     }
     Ok(Pattern {
@@ -481,15 +562,57 @@ struct ChunkResult {
 struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    max_mib: u64,
+    max_chunk_mib: u64,
+    max_workgroups: u32,
 }
-fn open_gpu() -> Result<(Gpu, Adapter)> {
+struct GpuCandidate {
+    handle: wgpu::Adapter,
+    report: Adapter,
+}
+#[derive(Debug)]
+struct AllocationSpec {
+    ordinal: u64,
+    offset_bytes: u64,
+    bytes: u64,
+}
+struct ResidentAllocation {
+    buffer: wgpu::Buffer,
+    spec: AllocationSpec,
+}
+struct ResidentSet {
+    allocations: Vec<ResidentAllocation>,
+    bytes: u64,
+    complete: bool,
+    stop_reason: Option<String>,
+}
+
+fn open_gpu(index: usize, allow_software: bool) -> Result<(Gpu, Adapter)> {
     let instance = wgpu::Instance::default();
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: None, force_fallback_adapter: false })).context("No usable GPU adapter found. Check the graphics driver, then run `vram-fieldtest demo` to inspect the report format.")?;
-    let info = adapter.get_info();
+    let mut candidates = candidates_for_instance(&instance);
+    if candidates.is_empty() && allow_software {
+        if let Some(handle) =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                compatible_surface: None,
+                force_fallback_adapter: true,
+            }))
+        {
+            let info = handle.get_info();
+            candidates.push(GpuCandidate {
+                report: adapter_report(0, &info, &os_memory_adapters()),
+                handle,
+            });
+        }
+    }
+    let selected = candidates.into_iter().find(|candidate| candidate.report.index == index).with_context(|| format!("Adapter {index} is not available. Run `vram-fieldtest inspect` and choose a listed adapter."))?;
+    if !allow_software && selected.report.device_type == "software" {
+        bail!("Adapter {index} is a software renderer, not GPU memory. Choose a hardware adapter shown by `vram-fieldtest inspect`.");
+    }
+    let adapter = selected.handle;
     let limits = adapter.limits();
-    let max_mib =
-        (u64::from(limits.max_storage_buffer_binding_size) / MIB).clamp(1, MAX_WINDOW_MIB);
+    let max_chunk_mib =
+        (u64::from(limits.max_storage_buffer_binding_size) / MIB).clamp(1, MAX_CHUNK_MIB);
+    let max_workgroups = limits.max_compute_workgroups_per_dimension;
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
             label: Some("VRAM Field Test"),
@@ -499,21 +622,89 @@ fn open_gpu() -> Result<(Gpu, Adapter)> {
         None,
     ))
     .context("Could not open the GPU for compute. Close other GPU tests and retry.")?;
-    let mut inv = inventory();
-    inv.name = info.name;
-    inv.backend = format!("WebGPU {:?}", info.backend);
     Ok((
         Gpu {
             device,
             queue,
-            max_mib,
+            max_chunk_mib,
+            max_workgroups,
         },
-        inv,
+        selected.report,
     ))
 }
-fn exercise_gpu_chunk(
+
+fn allocation_specs(target_bytes: u64, chunk_bytes: u64, window_bytes: u64) -> Vec<AllocationSpec> {
+    let mut specs = Vec::new();
+    let mut offset = 0;
+    while offset < target_bytes {
+        let remaining_in_window = window_bytes - offset % window_bytes;
+        let bytes = (target_bytes - offset)
+            .min(chunk_bytes)
+            .min(remaining_in_window);
+        specs.push(AllocationSpec {
+            ordinal: specs.len() as u64,
+            offset_bytes: offset,
+            bytes,
+        });
+        offset += bytes;
+    }
+    specs
+}
+
+fn allocate_resident_set(
     gpu: &Gpu,
-    bytes: u64,
+    target_bytes: u64,
+    chunk_bytes: u64,
+    window_bytes: u64,
+    deadline: Instant,
+) -> Result<ResidentSet> {
+    let specs = allocation_specs(target_bytes, chunk_bytes, window_bytes);
+    let mut allocations = Vec::with_capacity(specs.len());
+    let mut bytes = 0;
+    let mut stop_reason = None;
+    for spec in specs {
+        if Instant::now() >= deadline {
+            stop_reason =
+                Some("The time limit was reached while reserving distinct GPU memory.".into());
+            break;
+        }
+        gpu.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        let label = format!("field test resident allocation {}", spec.ordinal);
+        let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(&label),
+            size: spec.bytes,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        encoder.clear_buffer(&buffer, 0, None);
+        gpu.queue.submit(Some(encoder.finish()));
+        gpu.device.poll(wgpu::Maintain::Wait);
+        if let Some(error) = pollster::block_on(gpu.device.pop_error_scope()) {
+            stop_reason = Some(format!(
+                "The driver could reserve only {} MiB as distinct live GPU memory: {error}. Close GPU applications or pass a smaller --mib amount.",
+                bytes / MIB
+            ));
+            break;
+        }
+        bytes += spec.bytes;
+        allocations.push(ResidentAllocation { buffer, spec });
+    }
+    Ok(ResidentSet {
+        complete: bytes == target_bytes,
+        allocations,
+        bytes,
+        stop_reason,
+    })
+}
+
+fn exercise_gpu_allocation(
+    gpu: &Gpu,
+    allocation: &ResidentAllocation,
     word: u32,
     name: &str,
     deadline: Instant,
@@ -526,24 +717,27 @@ fn exercise_gpu_chunk(
             complete: false,
         });
     }
+    let bytes = allocation.spec.bytes;
     let words = bytes / 4;
-    let output = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("field test memory window"),
-        size: bytes,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
     let readback = gpu.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("field test readback window"),
         size: bytes,
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
+    let salt = 0xA5A5_5A5Au32 ^ (allocation.spec.ordinal as u32).wrapping_mul(0x9E37_79B9);
+    let total_workgroups = words.div_ceil(64);
+    let dispatch_width = total_workgroups.min(u64::from(gpu.max_workgroups)) as u32;
+    let dispatch_height = total_workgroups.div_ceil(u64::from(dispatch_width)) as u32;
     let params = [
         word,
         u32::from(name == "address XOR"),
-        0xA5A5_5A5A,
+        salt,
         words as u32,
+        (allocation.spec.offset_bytes / 4) as u32,
+        dispatch_width,
+        0,
+        0,
     ];
     let uniform = gpu
         .device
@@ -552,7 +746,7 @@ fn exercise_gpu_chunk(
             contents: bytemuck::cast_slice(&params),
             usage: wgpu::BufferUsages::UNIFORM,
         });
-    let shader = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("field-test shader"), source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed("struct Params { value:u32, address_mode:u32, salt:u32, count:u32 }; @group(0) @binding(0) var<storage, read_write> data:array<u32>; @group(0) @binding(1) var<uniform> p:Params; @compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id:vec3<u32>) { if (id.x < p.count) { if (p.address_mode == 1u) { data[id.x] = id.x ^ p.salt; } else { data[id.x] = p.value; } } }")) });
+    let shader = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("field-test shader"), source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed("struct Params { value:u32, address_mode:u32, salt:u32, count:u32, base_word:u32, dispatch_width:u32, pad0:u32, pad1:u32 }; @group(0) @binding(0) var<storage, read_write> data:array<u32>; @group(0) @binding(1) var<uniform> p:Params; @compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id:vec3<u32>, @builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index) local:u32) { let index = (group.y * p.dispatch_width + group.x) * 64u + local; if (index < p.count) { if (p.address_mode == 1u) { data[index] = (p.base_word + index) ^ p.salt; } else { data[index] = p.value; } } }")) });
     let layout = gpu
         .device
         .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -601,7 +795,7 @@ fn exercise_gpu_chunk(
         entries: &[
             wgpu::BindGroupEntry {
                 binding: 0,
-                resource: output.as_entire_binding(),
+                resource: allocation.buffer.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 1,
@@ -619,9 +813,9 @@ fn exercise_gpu_chunk(
         });
         pass.set_pipeline(&pipeline);
         pass.set_bind_group(0, &bind, &[]);
-        pass.dispatch_workgroups(words.div_ceil(64) as u32, 1, 1);
+        pass.dispatch_workgroups(dispatch_width, dispatch_height, 1);
     }
-    encoder.copy_buffer_to_buffer(&output, 0, &readback, 0, bytes);
+    encoder.copy_buffer_to_buffer(&allocation.buffer, 0, &readback, 0, bytes);
     gpu.queue.submit(Some(encoder.finish()));
     let slice = readback.slice(..);
     let (tx, rx) = mpsc::channel();
@@ -660,7 +854,7 @@ fn exercise_gpu_chunk(
             });
         }
         let want = if name == "address XOR" {
-            (i as u32) ^ 0xA5A5_5A5A
+            ((allocation.spec.offset_bytes / 4) as u32).wrapping_add(i as u32) ^ salt
         } else {
             word
         };
@@ -839,45 +1033,213 @@ fn read_first_glob(root: &Path, file: &str) -> Option<f64> {
             .ok()
     })
 }
-fn inventory() -> Adapter {
-    let detected = linux_vram();
-    Adapter {
-        name: gpu_name().unwrap_or_else(|| "GPU adapter not reported by this OS".into()),
-        backend: "portable host-visible safety pass".into(),
-        detected_vram_mib: detected,
-        source: if detected.is_some() {
-            "OS driver report".into()
-        } else {
-            "not exposed by this OS".into()
-        },
-    }
+#[derive(Debug, Clone)]
+struct OsMemoryAdapter {
+    name: String,
+    vendor_id: Option<u32>,
+    device_id: Option<u32>,
+    total_mib: u64,
+    source: String,
 }
-fn linux_vram() -> Option<u64> {
-    if cfg!(target_os = "linux") {
-        for entry in fs::read_dir("/sys/class/drm").ok()?.flatten() {
-            if let Ok(s) = fs::read_to_string(entry.path().join("device/mem_info_vram_total")) {
-                if let Ok(n) = s.trim().parse::<u64>() {
-                    return Some(n / MIB);
-                }
+
+fn enumerate_gpu_candidates() -> Vec<GpuCandidate> {
+    candidates_for_instance(&wgpu::Instance::default())
+}
+
+fn candidates_for_instance(instance: &wgpu::Instance) -> Vec<GpuCandidate> {
+    let memory = os_memory_adapters();
+    instance
+        .enumerate_adapters(wgpu::Backends::PRIMARY)
+        .into_iter()
+        .enumerate()
+        .map(|(index, handle)| {
+            let info = handle.get_info();
+            GpuCandidate {
+                report: adapter_report(index, &info, &memory),
+                handle,
             }
-        }
-    }
-    None
+        })
+        .collect()
 }
-fn gpu_name() -> Option<String> {
+
+fn adapter_report(index: usize, info: &wgpu::AdapterInfo, memory: &[OsMemoryAdapter]) -> Adapter {
+    let match_by_id = memory.iter().find(|candidate| {
+        candidate.vendor_id == Some(info.vendor)
+            && candidate.device_id == Some(info.device)
+            && info.vendor != 0
+    });
+    let normalized_name = normalize_adapter_name(&info.name);
+    let match_by_name = memory.iter().find(|candidate| {
+        let candidate_name = normalize_adapter_name(&candidate.name);
+        !candidate_name.is_empty()
+            && (candidate_name.contains(&normalized_name)
+                || normalized_name.contains(&candidate_name))
+    });
+    let detected = match_by_id.or(match_by_name);
+    Adapter {
+        index,
+        name: info.name.clone(),
+        backend: format!("WebGPU {:?}", info.backend),
+        device_type: device_type_name(info.device_type).into(),
+        vendor_id: info.vendor,
+        device_id: info.device,
+        detected_vram_mib: detected.map(|candidate| candidate.total_mib),
+        source: detected
+            .map(|candidate| candidate.source.clone())
+            .unwrap_or_else(|| "not exposed by the operating-system driver".into()),
+    }
+}
+
+fn device_type_name(device_type: wgpu::DeviceType) -> &'static str {
+    match device_type {
+        wgpu::DeviceType::DiscreteGpu => "discrete GPU",
+        wgpu::DeviceType::IntegratedGpu => "integrated GPU",
+        wgpu::DeviceType::VirtualGpu => "virtual GPU",
+        wgpu::DeviceType::Cpu => "software",
+        wgpu::DeviceType::Other => "other",
+    }
+}
+
+fn normalize_adapter_name(name: &str) -> String {
+    name.chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn os_memory_adapters() -> Vec<OsMemoryAdapter> {
+    #[cfg(target_os = "windows")]
+    {
+        return windows_memory_adapters();
+    }
     #[cfg(target_os = "linux")]
     {
-        if let Some(output) = command_text(
-            "sh",
-            &["-c", "lspci 2>/dev/null | grep -Ei 'vga|3d' | head -1"],
-        ) {
-            let value = output.trim().to_string();
-            if !value.is_empty() {
-                return Some(value);
+        let mut adapters = linux_drm_memory_adapters(Path::new("/sys/class/drm"));
+        for adapter in nvidia_memory_adapters() {
+            if !adapters.iter().any(|known| {
+                normalize_adapter_name(&known.name) == normalize_adapter_name(&adapter.name)
+            }) {
+                adapters.push(adapter);
             }
         }
+        return adapters;
     }
-    None
+    #[allow(unreachable_code)]
+    Vec::new()
+}
+
+#[cfg(target_os = "linux")]
+fn linux_drm_memory_adapters(root: &Path) -> Vec<OsMemoryAdapter> {
+    let mut adapters = Vec::new();
+    let Ok(entries) = fs::read_dir(root) else {
+        return adapters;
+    };
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let name = file_name.to_string_lossy();
+        if !name
+            .strip_prefix("card")
+            .is_some_and(|suffix| !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()))
+        {
+            continue;
+        }
+        let device = entry.path().join("device");
+        let Some(total_bytes) = read_u64(&device.join("mem_info_vram_total")) else {
+            continue;
+        };
+        if total_bytes < MIB {
+            continue;
+        }
+        adapters.push(OsMemoryAdapter {
+            name: fs::read_to_string(device.join("product_name"))
+                .ok()
+                .map(|value| value.trim().to_string())
+                .unwrap_or_default(),
+            vendor_id: read_hex_u32(&device.join("vendor")),
+            device_id: read_hex_u32(&device.join("device")),
+            total_mib: total_bytes / MIB,
+            source: format!("Linux DRM {} mem_info_vram_total", name),
+        });
+    }
+    adapters
+}
+
+#[cfg(target_os = "linux")]
+fn read_u64(path: &Path) -> Option<u64> {
+    fs::read_to_string(path).ok()?.trim().parse().ok()
+}
+
+#[cfg(target_os = "linux")]
+fn read_hex_u32(path: &Path) -> Option<u32> {
+    let value = fs::read_to_string(path).ok()?;
+    u32::from_str_radix(value.trim().trim_start_matches("0x"), 16).ok()
+}
+
+#[cfg(target_os = "linux")]
+fn nvidia_memory_adapters() -> Vec<OsMemoryAdapter> {
+    let Some(text) = command_text(
+        "nvidia-smi",
+        &[
+            "--query-gpu=name,memory.total,pci.device_id",
+            "--format=csv,noheader,nounits",
+        ],
+    ) else {
+        return Vec::new();
+    };
+    parse_nvidia_inventory(&text)
+}
+
+#[cfg(target_os = "linux")]
+fn parse_nvidia_inventory(text: &str) -> Vec<OsMemoryAdapter> {
+    text.lines()
+        .filter_map(|line| {
+            let fields: Vec<_> = line.split(',').map(str::trim).collect();
+            let total_mib = fields.get(1)?.parse().ok()?;
+            let combined_id = fields
+                .get(2)
+                .and_then(|value| u32::from_str_radix(value.trim_start_matches("0x"), 16).ok());
+            Some(OsMemoryAdapter {
+                name: fields.first()?.to_string(),
+                vendor_id: Some(0x10de),
+                device_id: combined_id.map(|value| value >> 16),
+                total_mib,
+                source: "nvidia-smi reported memory.total".into(),
+            })
+        })
+        .collect()
+}
+
+#[cfg(target_os = "windows")]
+fn windows_memory_adapters() -> Vec<OsMemoryAdapter> {
+    use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1};
+
+    let Ok(factory) = (unsafe { CreateDXGIFactory1::<IDXGIFactory1>() }) else {
+        return Vec::new();
+    };
+    let mut adapters = Vec::new();
+    let mut index = 0;
+    while let Ok(adapter) = unsafe { factory.EnumAdapters1(index) } {
+        let Ok(description) = (unsafe { adapter.GetDesc1() }) else {
+            index += 1;
+            continue;
+        };
+        let end = description
+            .Description
+            .iter()
+            .position(|character| *character == 0)
+            .unwrap_or(description.Description.len());
+        if description.DedicatedVideoMemory >= MIB as usize {
+            adapters.push(OsMemoryAdapter {
+                name: String::from_utf16_lossy(&description.Description[..end]),
+                vendor_id: Some(description.VendorId),
+                device_id: Some(description.DeviceId),
+                total_mib: description.DedicatedVideoMemory as u64 / MIB,
+                source: "Windows DXGI DedicatedVideoMemory".into(),
+            });
+        }
+        index += 1;
+    }
+    adapters
 }
 fn hostname() -> String {
     std::env::var("COMPUTERNAME")
@@ -919,7 +1281,7 @@ fn render_html(r: &Report) -> String {
         format!("<table><thead><tr><th>Phase</th><th>Temperature</th><th>Core clock</th><th>Memory clock</th></tr></thead><tbody>{}</tbody></table>", r.telemetry.samples.iter().map(|sample| format!("<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>", esc(&sample.phase), units(sample.temperature_c, "°C"), units(sample.core_clock_mhz, "MHz"), units(sample.memory_clock_mhz, "MHz"))).collect::<String>())
     };
     format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VRAM Field Test report</title><style>body{{font-family:system-ui;max-width:760px;margin:40px auto;padding:0 20px;color:#181714}}h1{{font-family:monospace}}.pass{{color:#176a44}}.fail{{color:#9c251d}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #777;padding:9px;text-align:left}}.stamp{{border:3px solid;padding:8px;display:inline-block;font-weight:bold}}</style></head><body><main><p>VRAM FIELD TEST / local evidence report</p><h1>Memory pattern report</h1><p class="stamp {status}">{status}</p><p>{summary}</p><h2>Coverage</h2><p>Tested {tested} MiB. Detected VRAM: {detected}. Usable coverage: {coverage}.</p><h2>Patterns</h2><table><thead><tr><th>Pattern</th><th>Bytes</th><th>Mismatches</th><th>Windows</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table><h2>Thermals and clocks</h2><p>Provider: {provider}. {telemetry_note}</p>{telemetry_rows}<h2>Limits</h2><p>Thermal stop: {thermal}°C. Total duration limit: {seconds}s. Each GPU chunk is at most {chunk} MiB.</p><h2>Read before using this report</h2><p>{notes}</p></main></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VRAM Field Test report</title><style>body{{font-family:system-ui;max-width:760px;margin:40px auto;padding:0 20px;color:#181714}}h1{{font-family:monospace}}.pass{{color:#176a44}}.fail{{color:#9c251d}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #777;padding:9px;text-align:left}}.stamp{{border:3px solid;padding:8px;display:inline-block;font-weight:bold}}</style></head><body><main><p>VRAM FIELD TEST / local evidence report</p><h1>Memory pattern report</h1><p class="stamp {status}">{status}</p><p>{summary}</p><h2>Coverage</h2><p>Tested {tested} MiB. Detected VRAM: {detected}. Usable coverage: {coverage}.</p><p>Resident memory: {resident} MiB in {allocation_count} distinct allocation(s). Retained through pattern checks: {retained}.</p><h2>Patterns</h2><table><thead><tr><th>Pattern</th><th>Bytes</th><th>Mismatches</th><th>Windows</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table><h2>Thermals and clocks</h2><p>Provider: {provider}. {telemetry_note}</p>{telemetry_rows}<h2>Limits</h2><p>Thermal stop: {thermal}°C. Total duration limit: {seconds}s. Each GPU chunk is at most {chunk} MiB.</p><h2>Read before using this report</h2><p>{notes}</p></main></body></html>"#,
         status = esc(&r.verdict.status),
         summary = esc(&r.verdict.summary),
         tested = r.limits.tested_mib,
@@ -929,6 +1291,13 @@ fn render_html(r: &Report) -> String {
             .map(|n| format!("{n} MiB"))
             .unwrap_or_else(|| "not exposed".into()),
         coverage = coverage,
+        resident = r.limits.resident_mib,
+        allocation_count = r.limits.resident_allocations,
+        retained = if r.residency.retained_through_patterns {
+            "yes"
+        } else {
+            "no"
+        },
         rows = rows,
         provider = esc(&r.telemetry.provider),
         telemetry_note = esc(r.telemetry.unavailable_reason.as_deref().unwrap_or("")),
@@ -970,6 +1339,85 @@ mod tests {
         assert_eq!(plan.requested_mib, 88_474);
     }
     #[test]
+    fn retained_high_vram_protocol_reports_only_common_completed_coverage() {
+        let plan = coverage_plan(98_304, None, 90, 16_384);
+        let allocations =
+            allocation_specs(plan.requested_mib * MIB, MAX_CHUNK_MIB * MIB, 16_384 * MIB);
+        assert_eq!(allocations.len(), 1_383);
+        assert_eq!(
+            allocations
+                .iter()
+                .map(|allocation| allocation.bytes)
+                .sum::<u64>(),
+            plan.requested_mib * MIB
+        );
+        for pair in allocations.windows(2) {
+            assert_eq!(pair[0].offset_bytes + pair[0].bytes, pair[1].offset_bytes);
+            assert_ne!(pair[0].ordinal, pair[1].ordinal);
+        }
+
+        let completed = ["solid AA", "solid 55", "address XOR"]
+            .into_iter()
+            .map(|name| Pattern {
+                name: name.into(),
+                bytes: allocations.iter().map(|allocation| allocation.bytes).sum(),
+                mismatches: 0,
+                status: "pass".into(),
+                windows: 6,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(completed_tested_mib(&completed), 88_474);
+        assert!(completed_tested_mib(&completed) as f64 / 98_304.0 * 100.0 >= 90.0);
+
+        let incomplete = &completed[..2];
+        assert_eq!(completed_tested_mib(incomplete), 0);
+        assert_eq!(
+            allocations.len(),
+            1_383,
+            "the residency set stays live through all checks"
+        );
+    }
+    #[test]
+    fn automatic_run_refuses_an_unknown_memory_total() {
+        let error = resolve_requested_mib(None, None, 90, 1024).unwrap_err();
+        assert!(error.to_string().contains("did not report GPU memory"));
+        assert_eq!(
+            resolve_requested_mib(None, Some(512), 90, 1024).unwrap().1,
+            512
+        );
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn nvidia_inventory_parser_keeps_each_adapter_and_total() {
+        let adapters = parse_nvidia_inventory(
+            "NVIDIA RTX 6000 Ada, 49140, 0x26B110DE\nNVIDIA RTX 4090, 24564, 0x268410DE\n",
+        );
+        assert_eq!(adapters.len(), 2);
+        assert_eq!(adapters[0].total_mib, 49_140);
+        assert_eq!(adapters[0].vendor_id, Some(0x10de));
+        assert_eq!(adapters[0].device_id, Some(0x26b1));
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_inventory_reads_each_drm_adapter_total() {
+        let root = tempfile::tempdir().unwrap();
+        for (card, vendor, device, mib) in [
+            ("card0", "0x1002", "0x744c", 24_576u64),
+            ("card1", "0x8086", "0x56c0", 16_384u64),
+        ] {
+            let path = root.path().join(card).join("device");
+            fs::create_dir_all(&path).unwrap();
+            fs::write(path.join("vendor"), vendor).unwrap();
+            fs::write(path.join("device"), device).unwrap();
+            fs::write(path.join("mem_info_vram_total"), (mib * MIB).to_string()).unwrap();
+        }
+        fs::create_dir_all(root.path().join("renderD128").join("device")).unwrap();
+        let adapters = linux_drm_memory_adapters(root.path());
+        assert_eq!(adapters.len(), 2);
+        assert_eq!(adapters[0].total_mib, 24_576);
+        assert_eq!(adapters[1].total_mib, 16_384);
+    }
+    #[test]
     fn telemetry_parsers_keep_temperature_and_clocks() {
         assert_eq!(
             parse_csv_telemetry("71, 1530, 9501\n"),
@@ -990,7 +1438,8 @@ mod tests {
     }
     #[test]
     fn write_report_uses_the_requested_local_directory() {
-        let report: Report = serde_json::from_str(include_str!("../examples/sample-report.json")).unwrap();
+        let report: Report =
+            serde_json::from_str(include_str!("../examples/sample-report.json")).unwrap();
         let directory = tempfile::tempdir().unwrap();
         write_report(directory.path(), &report).unwrap();
         assert!(directory.path().join("report.json").is_file());

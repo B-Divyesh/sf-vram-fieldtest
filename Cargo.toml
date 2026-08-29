@@ -22,5 +22,8 @@ pollster = "0.3"
 wgpu = "0.19"
 bytemuck = "1.21"
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = ["Win32_Graphics_Dxgi"] }
+
 [dev-dependencies]
 tempfile = "3.12"
