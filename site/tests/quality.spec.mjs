@@ -30,7 +30,7 @@ test('@claim:release-download landing picks a real platform release asset', asyn
   await page.goto('/');
   const download = page.getByRole('link', { name: 'Download for windows' });
   await expect(download).toBeVisible();
-  await expect(download).toHaveAttribute('href', /v0\.1\.4\/vram-fieldtest-windows-x86_64\.zip$/);
+  await expect(download).toHaveAttribute('href', /v0\.1\.5\/vram-fieldtest-windows-x86_64\.zip$/);
   await expect(page.getByText('v0.1.5 · 2 MB')).toBeVisible();
 });
 
@@ -40,7 +40,7 @@ test('release update replaces a fresh cache entry from the previous version', as
     data: { tag_name: 'v0.1.2', assets: [] }
   })));
   await page.goto('/');
-  await expect(page.getByRole('link', { name: 'Download for windows' })).toHaveAttribute('href', /v0\.1\.4\//);
+  await expect(page.getByRole('link', { name: 'Download for windows' })).toHaveAttribute('href', /v0\.1\.5\//);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('vram:release')).data.tag_name)).toBe('v0.1.5');
 });
 
