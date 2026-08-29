@@ -69,6 +69,7 @@ cargo package --locked --allow-dirty
 ```
 
 - Clean npm install: 5 packages, 0 vulnerabilities.
+- All 13 exact commands in `.factory/claims.json` pass independently.
 - Suite: 17 Node unit/integration tests, 4 Rust tests, and 18 Chromium tests.
 - Chromium covers desktop, 390 px mobile, keyboard focus, 200% text, offline
   reload, update behavior, privacy traffic, real 404 behavior, and all routes.
@@ -91,6 +92,7 @@ Non-publishing native matrix rehearsals:
 
 - <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33261439507>
 - <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33261753557>
+- <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33262110739>
 
 The second run reproduced the first run's release archive hashes after the
 package manifests were committed:
@@ -98,7 +100,7 @@ package manifests were committed:
 | Artifact | SHA-256 |
 |---|---|
 | Linux x86_64 archive | `4a5127a5fdcb9bfb7868c5eae6f3eda16dbc027db45cde90cd2c70eb689b3dda` |
-| Windows x86_64 archive | `bacf8c7f8e1d8f4e17db576705093816e08e9cf96485dfc9bbf3b775aaaa03fe` |
+| Windows x86_64 archive | `a6283ef9d01e6cbd00a343ffcc37f5c24be69caaf647334e95d79042779dc613` |
 | macOS Apple silicon archive | `336e3243293bb965909423b60290f0cc4566c65b8fa2df7d75197effbbcc1e1d` |
 | macOS Intel archive | `b076d00a6338621d4d7c0292f43768e095140f3ba85867ebdc0190ba2cdb9e58` |
 
