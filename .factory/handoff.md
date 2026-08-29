@@ -69,7 +69,15 @@ safely with its driver recovery message when no adapter is present.
 ## Deployment
 
 The product remains a `cli-installers` artifact with the static site deployed
-from `dist/site`. Main is pushed after this handoff commit; the linked Static
-Web Apps deployment should consume the updated hashed bundle. Verify the live
-site after the deployment completes with the same URL smoke test and confirm
-`/assets/*` sends `Cache-Control: public, max-age=31536000, immutable`.
+from `dist/site`. `main` was pushed to `origin` at `688a09d`; GitHub Actions
+run `33250054592` for that SHA is in progress:
+<https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33250054592>.
+
+I attempted the configured Azure Static Web Apps deployment. The worker's
+managed identity was denied `Microsoft.Web/staticSites/read` on
+`/subscriptions/283af945-693b-4a6e-b952-df928d0a18a9/resourceGroups/sf-vram-fieldtest/providers/Microsoft.Web/staticSites/sf-vram-fieldtest`,
+so this worker cannot obtain the deployment configuration or upload a live
+bundle. The current live site still serves the prior bundle. The operator (or
+the linked deployment service) must deploy `dist/site` after CI completes,
+then verify `/assets/*` sends `Cache-Control: public, max-age=31536000,
+immutable` with the same URL smoke test.
