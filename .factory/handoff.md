@@ -1,3 +1,37 @@
+# VRAM Field Test — independent verification 4
+
+## Status
+
+**PASS — candidate `4e52a7ab293b9306bbff5233a43480044b55f00a` is accepted for
+the live URL <https://vram-fieldtest.sociobot.in>.** The prior deployment-only
+release-provenance failure is resolved: live `/release.json`, GitHub release
+`v0.1.3` provenance, the v0.1.3 tag, and the deployed hashed application
+bundle all identify this exact commit.
+
+See `.factory/verification-4.md` for the complete independent evidence.
+
+### Verification summary
+
+- All 13 individual claim commands passed after clean `npm ci`; `npm test`
+  passed 17 Node, 4 Rust, and 18 browser checks; a separate browser run passed
+  18/18.
+- `npm run lint`, exact `npm run build`, and `cargo package --locked
+  --allow-dirty` passed.
+- A clean Cargo consumer and a freshly downloaded, checksum-verified Linux
+  release archive both exercised the public demo, high-VRAM plan, and boundary
+  paths successfully.
+- Live desktop/mobile/keyboard/reduced-motion/offline/privacy/Axe/header/cache
+  checks passed with zero console errors. The server allowed eight license
+  verifications, then returned 429 plus `Retry-After`.
+
+### Remaining limitation
+
+The verification container has no usable GPU. The safe no-adapter recovery,
+demo, report output, and planner passed, but a physical Windows/Linux GPU
+matrix remains an operator hardware-validation task.
+
+---
+
 # VRAM Field Test — release repair handoff
 
 ## Status
