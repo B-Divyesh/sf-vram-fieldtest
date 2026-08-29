@@ -61,13 +61,19 @@ vram-fieldtest inspect
 
 Linux uses the driver memory total or `nvidia-smi`.
 
+macOS uses Metal's recommended working-set size for each available device.
+
 Run only with working cooling and a clear view of the machine:
 
 ```sh
 vram-fieldtest run --yes --adapter 0 --output ./gpu-record
 ```
 
-`--yes` confirms that you want to start a compute memory test. By default, the tool plans 90% of reported memory in test batches.
+`--yes` confirms that you want to start a compute memory test. By default, the tool targets 90% of reported memory in test batches.
+
+A hardware run starts only when it can read the selected card's temperature. It stops at 85°C or when that reading disappears.
+
+`--allow-no-thermal-stop` is an unsafe override. It disables the automatic thermal stop and requires manual monitoring.
 
 The test keeps every counted allocation live until all three patterns finish. The driver cannot recycle one small allocation as claimed coverage.
 
@@ -75,7 +81,7 @@ If the driver does not report a total, the test stops with an instruction. It ne
 
 Use `--adapter` to choose a listed card. Use `--window-mib` to set the largest monitored batch, up to 16,384 MiB.
 
-The report records completed memory, retained allocation evidence, each check, and local temperature or clock readings when available.
+The report records completed memory, retained allocation evidence, each check, and selected-card temperature readings.
 
 A time or thermal stop saves an incomplete report before exit.
 
@@ -91,7 +97,7 @@ The tool runs three memory checks. Technical names and definitions are available
 
 The CLI makes no network request. It writes reports only to the folder you select.
 
-Release checks run the retained-allocation protocol on Windows and Linux. Their JSON evidence ships with each GitHub release.
+Release checks run a 4 MiB software-renderer smoke test on Windows and Linux. Their JSON records ship with each GitHub release.
 
 ## Develop and verify
 

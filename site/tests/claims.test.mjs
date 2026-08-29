@@ -75,8 +75,8 @@ test('@claim:report-output-path report files are written to the requested local 
 
 test('@claim:non-invasive the CLI has no clock or driver changing command path', () => {
   const source = readFileSync('src/main.rs', 'utf8');
-  assert.doesNotMatch(source, /--set|--overclock|nvidia-settings|setClocks/i);
-  assert.match(source, /rocm-smi", &\["--showtemp", "--showclocks", "--json"\]/);
+  assert.doesNotMatch(source, /--set|--overclock|--voltage|--power-limit|nvidia-settings|setClocks/i);
+  assert.match(source, /--query-gpu=name,pci\.device_id,temperature\.gpu,clocks\.sm,clocks\.mem/);
 });
 
 test('@claim:unsigned-builds Windows and macOS artifacts are not signed in the release workflow', () => {
@@ -99,17 +99,37 @@ test('regression: automatic coverage cannot silently fall back to a small fixed 
   assert.match(source, /Run `vram-fieldtest inspect`, confirm the card's memory, then pass `--mib <amount>`/);
 });
 
-test('regression: adapter inventory is indexed and uses Windows DXGI plus Linux driver totals', () => {
+test('@claim:adapter-memory-sources adapter inventory uses each platform memory source', () => {
   const source = readFileSync('src/main.rs', 'utf8');
   assert.match(source, /enumerate_adapters\(wgpu::Backends::PRIMARY\)/);
   assert.match(source, /Windows DXGI DedicatedVideoMemory/);
   assert.match(source, /Linux DRM .* mem_info_vram_total/);
   assert.match(source, /nvidia-smi reported memory\.total/);
+  assert.match(source, /Metal recommendedMaxWorkingSetSize/);
   assert.match(source, /Adapter index shown by `vram-fieldtest inspect`/);
+  const output = execFileSync('cargo', ['test', '--quiet', 'tests::linux_inventory_reads_each_drm_adapter_total', '--', '--exact'], { encoding: 'utf8' });
+  assert.match(output, /1 passed/);
 });
 
-test('@claim:high-vram-coverage completed protocol retains distinct memory and reports at least 90 percent', () => {
-  const output = execFileSync('cargo', ['test', '--quiet', 'tests::retained_high_vram_protocol_reports_only_common_completed_coverage', '--', '--exact'], { encoding: 'utf8' });
+test('@claim:high-vram-target default plan targets at least 90 percent with distinct allocations', () => {
+  const output = execFileSync('cargo', ['test', '--quiet', 'tests::high_vram_plan_uses_unique_allocations_for_the_full_target', '--', '--exact'], { encoding: 'utf8' });
+  assert.match(output, /1 passed/);
+});
+
+test('@claim:selected-thermal-stop hardware runs require temperature from the selected adapter', () => {
+  for (const name of ['hardware_run_requires_temperature_and_stops_if_it_disappears', 'selected_adapter_telemetry_never_falls_back_to_the_first_gpu', 'drm_telemetry_reads_only_the_selected_adapter']) {
+    const output = execFileSync('cargo', ['test', '--quiet', `tests::${name}`, '--', '--exact'], { encoding: 'utf8' });
+    assert.match(output, /1 passed/);
+  }
+});
+
+test('@claim:bounded-stop-report a bounded stop saves incomplete JSON and HTML', () => {
+  const output = execFileSync('cargo', ['test', '--quiet', 'tests::stop_reports_are_saved_and_mismatches_map_to_exit_two', '--', '--exact'], { encoding: 'utf8' });
+  assert.match(output, /1 passed/);
+});
+
+test('@claim:mismatch-exit a mismatch maps to process exit code two', () => {
+  const output = execFileSync('cargo', ['test', '--quiet', 'tests::stop_reports_are_saved_and_mismatches_map_to_exit_two', '--', '--exact'], { encoding: 'utf8' });
   assert.match(output, /1 passed/);
 });
 

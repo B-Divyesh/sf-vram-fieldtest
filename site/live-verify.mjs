@@ -55,6 +55,25 @@ try {
   assert.ok(await mobile.locator('h1').isVisible(), 'h1 is hidden at 200% text');
   await mobile.close();
 
+  const touch = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true });
+  await touch.goto(new URL('/demo', base).href, { waitUntil: 'networkidle' });
+  for (const label of ['Reset demo', 'Terms']) {
+    const box = await touch.getByText(label, { exact: true }).first().boundingBox();
+    assert.ok(box.width >= 44 && box.height >= 44, `${label} touch target is smaller than 44 by 44 px`);
+  }
+  await touch.goto(base.href, { waitUntil: 'networkidle' });
+  for (const label of ['Technical details', 'Have a license?']) {
+    const disclosure = touch.getByText(label, { exact: true });
+    await disclosure.focus();
+    const focus = await disclosure.evaluate(element => {
+      const style = getComputedStyle(element);
+      return { width: parseFloat(style.outlineWidth), color: style.outlineColor };
+    });
+    assert.ok(focus.width >= 3, `${label} focus ring is thinner than 3 px`);
+    assert.equal(focus.color, 'rgb(184, 50, 18)', `${label} focus ring uses the wrong contrast token`);
+  }
+  await touch.close();
+
   const reduced = await browser.newContext({ reducedMotion: 'reduce' });
   const reducedPage = await reduced.newPage();
   await reducedPage.goto(base.href);

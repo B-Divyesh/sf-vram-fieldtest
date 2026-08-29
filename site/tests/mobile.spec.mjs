@@ -45,3 +45,54 @@ test('published mobile download target is at least 44 CSS pixels high', async ({
   const box = await download.boundingBox();
   expect(box.height).toBeGreaterThanOrEqual(44);
 });
+
+test('all demo controls and footer links meet the 44 CSS pixel touch target', async ({ page }) => {
+  await page.goto('/demo');
+  for (const target of await page.locator('a:visible, button:visible, summary:visible, input:visible').all()) {
+    const box = await target.boundingBox();
+    expect(box.width, await target.textContent()).toBeGreaterThanOrEqual(44);
+    expect(box.height, await target.textContent()).toBeGreaterThanOrEqual(44);
+  }
+  const reset = await page.getByRole('button', { name: 'Reset demo' }).boundingBox();
+  const terms = await page.getByRole('link', { name: 'Terms' }).boundingBox();
+  expect(reset.height).toBeGreaterThanOrEqual(44);
+  expect(terms.width).toBeGreaterThanOrEqual(44);
+});
+
+test('disclosure focus rings are designed and meet 3 to 1 contrast', async ({ page }) => {
+  await page.route('https://api.github.com/repos/**/releases/latest', route => route.fulfill({ status: 503, body: 'unavailable' }));
+  await page.goto('/');
+  for (const label of ['Technical details', 'Have a license?']) {
+    const summary = page.getByText(label, { exact: true });
+    await summary.focus();
+    const style = await summary.evaluate(element => {
+      const parse = value => value.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const luminance = rgb => {
+        const linear = rgb.map(channel => {
+          const value = channel / 255;
+          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+      };
+      const computed = getComputedStyle(element);
+      const foreground = luminance(parse(computed.outlineColor));
+      let parent = element;
+      let background = [244, 234, 214];
+      while (parent) {
+        const color = getComputedStyle(parent).backgroundColor;
+        if (color && color !== 'rgba(0, 0, 0, 0)') {
+          background = parse(color);
+          break;
+        }
+        parent = parent.parentElement;
+      }
+      const backgroundLuminance = luminance(background);
+      return {
+        width: parseFloat(computed.outlineWidth),
+        contrast: (Math.max(foreground, backgroundLuminance) + 0.05) / (Math.min(foreground, backgroundLuminance) + 0.05)
+      };
+    });
+    expect(style.width).toBeGreaterThanOrEqual(3);
+    expect(style.contrast).toBeGreaterThanOrEqual(3);
+  }
+});

@@ -96,6 +96,12 @@ jobs:
           python-version: '3.13'
       - name: Build binary
         run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Verify macOS Metal memory inventory
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          target/${{ matrix.target }}/release/vram-fieldtest inspect --json > macos-inventory.json
+          jq -e 'length > 0 and all(.[]; .detected_vram_mib > 0 and .source == "Metal recommendedMaxWorkingSetSize")' macos-inventory.json >/dev/null
       - name: Package Unix archive
         if: runner.os != 'Windows'
         shell: bash

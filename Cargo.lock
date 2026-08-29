@@ -1122,6 +1122,7 @@ dependencies = [
  "bytemuck",
  "chrono",
  "clap",
+ "metal",
  "pollster",
  "serde",
  "serde_json",

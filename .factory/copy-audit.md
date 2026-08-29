@@ -1,4 +1,4 @@
-# Landing copy audit — polish 1
+# Landing copy audit — repair 6
 
 The first screen reads in one breath: “Test GPU memory before money changes hands. For buyers, resellers, and repair benches who need a clear memory test record. Try it with sample data.” It names the job, audience, and first action.
 
@@ -9,7 +9,7 @@ The first screen reads in one breath: “Test GPU memory before money changes ha
 | Try it with sample data | 5 | `demo-privacy` |
 | See a finished report and the exact test limits. | 9 | — |
 | Runs locally with no account. | 5 | `no-account` |
-| Tests 90% of reported memory in safe batches. | 9 | `high-vram-coverage` |
+| Targets 90% of reported memory in test batches. | 8 | `high-vram-target` |
 | Free core test. | 3 | `report-kit-price` |
 | Report Kit costs $19 once. | 5 | `report-kit-price` |
 | Sample report | 2 | — |
@@ -26,9 +26,10 @@ The first screen reads in one breath: “Test GPU memory before money changes ha
 | Confirm, choose an amount, then check memory. | 7 | — |
 | Save a local JSON and print-ready report with the result and limits. | 12 | `demo-report` |
 | Memory test limits | 3 | — |
-| The test checks GPU memory. | 5 | — |
-| It does not change clocks or drivers. | 7 | `non-invasive` |
-| Watch cooling while it runs. | 5 | — |
+| A hardware run needs a temperature reading from the selected card. | 11 | `selected-thermal-stop` |
+| It stops at 85°C or if that reading disappears. | 9 | `selected-thermal-stop` |
+| The unsafe override disables this automatic stop. | 7 | `selected-thermal-stop` |
+| The test never changes clocks, voltages, or drivers. | 8 | `non-invasive` |
 | Reports save to the folder you choose. | 7 | `report-output-path` |
 | The CLI makes no network request. | 6 | `cli-local` |
 | The site saves a license token only after you add one. | 11 | `license-storage` |

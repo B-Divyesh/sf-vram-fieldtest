@@ -191,6 +191,19 @@ test('keyboard navigation, route focus, and back button work', async ({ page }) 
   await expect(page).toHaveTitle('VRAM Field Test — Test GPU memory');
 });
 
+test('keyboard opens and closes both disclosure controls', async ({ page }) => {
+  await page.goto('/');
+  for (const label of ['Technical details', 'Have a license?']) {
+    const summary = page.getByText(label, { exact: true });
+    const details = summary.locator('..');
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await expect(details).toHaveAttribute('open', '');
+    await page.keyboard.press('Space');
+    await expect(details).not.toHaveAttribute('open', '');
+  }
+});
+
 test('release API failure renders a calm state without console errors', async ({ page }) => {
   await page.unroute('https://api.github.com/repos/**/releases/latest');
   await page.route('https://api.github.com/repos/**/releases/latest', route => route.fulfill({ json: { message: 'not published' } }));

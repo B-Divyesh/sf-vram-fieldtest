@@ -50,6 +50,9 @@ struct RunArgs {
     /// Permit a software adapter. Intended for release protocol checks, not hardware reports.
     #[arg(long, hide = true)]
     allow_software: bool,
+    /// UNSAFE: run without an automatic temperature stop when selected-adapter telemetry is unavailable.
+    #[arg(long)]
+    allow_no_thermal_stop: bool,
     #[arg(long, default_value = "./vram-fieldtest-report")]
     output: PathBuf,
     /// Total MiB to cover across windows. Defaults to 90% of detected VRAM.
@@ -133,7 +136,7 @@ struct Limits {
     resident_mib: u64,
     #[serde(default)]
     resident_allocations: u64,
-    thermal_limit_c: u8,
+    thermal_limit_c: Option<u8>,
     max_seconds: u64,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -317,22 +320,38 @@ fn run(args: RunArgs) -> Result<()> {
     if chunk_mib < args.window_mib {
         eprintln!("This adapter uses {chunk_mib} MiB resident allocations inside each test batch.");
     }
-    let thermal_limit = 85;
-    let mut telemetry = telemetry_snapshot(clock.elapsed().as_millis(), "before run");
+    let mut telemetry = telemetry_snapshot(clock.elapsed().as_millis(), "before run", &adapter);
+    let thermal_limit =
+        thermal_limit_for_run(&telemetry, args.allow_no_thermal_stop, args.allow_software)?;
+    if thermal_limit.is_none() && !args.allow_software {
+        eprintln!(
+            "WARNING: no automatic thermal stop is active. Keep the selected GPU in view and stop the run if cooling or stability changes."
+        );
+    }
     let mut patterns = Vec::new();
-    let mut stop_reason = thermal_stop(&telemetry, thermal_limit);
+    let mut stop_reason = thermal_limit.and_then(|limit| thermal_stop(&telemetry, limit));
+    if let Some(reason) = &stop_reason {
+        bail!("Not started: {reason}");
+    }
+    let mut allocation_control = ExerciseControl {
+        deadline,
+        telemetry: &mut telemetry,
+        clock: &clock,
+        thermal_limit,
+        adapter: &adapter,
+    };
     let residency = allocate_resident_set(
         &gpu,
         requested_mib * MIB,
         chunk_mib * MIB,
         args.window_mib * MIB,
-        deadline,
+        &mut allocation_control,
     )?;
+    stop_reason = residency.stop_reason.clone();
     if !residency.complete {
-        stop_reason =
-            Some(residency.stop_reason.clone().unwrap_or_else(|| {
-                "The requested distinct GPU memory could not be allocated.".into()
-            }));
+        stop_reason.get_or_insert_with(|| {
+            "The requested distinct GPU memory could not be allocated.".into()
+        });
     }
     for (name, word) in [
         ("solid AA", 0xAAAA_AAAAu32),
@@ -347,6 +366,7 @@ fn run(args: RunArgs) -> Result<()> {
             telemetry: &mut telemetry,
             clock: &clock,
             thermal_limit,
+            adapter: &adapter,
         };
         let outcome =
             exercise_pattern(&gpu, &residency, args.window_mib, word, name, &mut control)?;
@@ -370,6 +390,13 @@ fn run(args: RunArgs) -> Result<()> {
         .detected_vram_mib
         .map(|v| (tested_mib as f64 / v as f64 * 100.0).min(100.0));
     let bad: u64 = patterns.iter().map(|p| p.mismatches).sum();
+    let final_sample = telemetry_sample(clock.elapsed().as_millis(), "after run", &adapter);
+    if stop_reason.is_none() {
+        if let Some(limit) = thermal_limit {
+            stop_reason = thermal_stop_sample(&final_sample, limit);
+        }
+    }
+    telemetry.samples.push(final_sample);
     let status = if bad > 0 {
         "fail"
     } else if stop_reason.is_some() {
@@ -377,9 +404,6 @@ fn run(args: RunArgs) -> Result<()> {
     } else {
         "pass"
     };
-    telemetry
-        .samples
-        .push(telemetry_sample(clock.elapsed().as_millis(), "after run"));
     let summary = match status {
         "pass" => format!(
             "No mismatches in {tested_mib} MiB across {} patterns and {} retained allocation(s).",
@@ -394,8 +418,8 @@ fn run(args: RunArgs) -> Result<()> {
         _ => format!("{bad} mismatches found. Do not rely on this GPU until it is retested."),
     };
     let mut notes = vec!["The tool retains no telemetry and writes only the requested local report.".into(), "Counted coverage includes only distinct GPU allocations kept live until every completed memory pattern ended.".into(), "Each allocation is at most 64 MiB so duration and thermal guards can stop between GPU submissions and during CPU verification.".into(), "A pass is evidence for this bounded pattern run. It does not certify every GPU fault.".into()];
-    if telemetry.unavailable_reason.is_some() {
-        notes.push("Temperature and clock telemetry was unavailable from this machine's local driver tools; the report records that absence instead of inventing readings.".into());
+    if thermal_limit.is_none() {
+        notes.push("No automatic thermal stop was active. This run used an explicit unsafe override or a software adapter.".into());
     }
     let report = Report {
         schema: "vram-fieldtest/report-1".into(),
@@ -434,7 +458,7 @@ fn run(args: RunArgs) -> Result<()> {
         },
         notes,
     };
-    write_report(&args.output, &report)?;
+    let exit_code = save_report_and_exit_code(&args.output, &report)?;
     if args.json {
         println!(
             "{}",
@@ -448,13 +472,13 @@ fn run(args: RunArgs) -> Result<()> {
             args.output.join("report.html").display()
         );
     }
-    if status == "incomplete" {
+    if exit_code == 1 {
         bail!(
             "{} Report saved before exit.",
             stop_reason.unwrap_or_else(|| "Stopped safely.".into())
         );
     }
-    if bad > 0 {
+    if exit_code == 2 {
         std::process::exit(2);
     }
     Ok(())
@@ -464,7 +488,8 @@ struct ExerciseControl<'a> {
     deadline: Instant,
     telemetry: &'a mut Telemetry,
     clock: &'a Instant,
-    thermal_limit: u8,
+    thermal_limit: Option<u8>,
+    adapter: &'a Adapter,
 }
 
 fn exercise_pattern(
@@ -493,17 +518,26 @@ fn exercise_pattern(
             let pre = telemetry_sample(
                 control.clock.elapsed().as_millis(),
                 format!("before {name} batch {}", windows + 1),
+                control.adapter,
             );
-            if pre
-                .temperature_c
-                .is_some_and(|t| t >= f64::from(control.thermal_limit))
+            if control
+                .thermal_limit
+                .is_some_and(|limit| thermal_stop_sample(&pre, limit).is_some())
             {
                 control.telemetry.samples.push(pre);
                 return Ok(Pattern {
                     name: name.into(),
                     bytes: tested,
                     mismatches,
-                    status: "thermal limit".into(),
+                    status: telemetry_stop_status(
+                        control
+                            .telemetry
+                            .samples
+                            .last()
+                            .expect("sample was recorded"),
+                        control.thermal_limit.expect("guarded thermal limit"),
+                    )
+                    .into(),
                     windows,
                 });
             }
@@ -526,17 +560,24 @@ fn exercise_pattern(
             let post = telemetry_sample(
                 control.clock.elapsed().as_millis(),
                 format!("after {name} batch {windows}"),
+                control.adapter,
             );
-            let hot = post
-                .temperature_c
-                .is_some_and(|t| t >= f64::from(control.thermal_limit));
+            let stop_status = control
+                .thermal_limit
+                .and_then(|limit| thermal_stop_sample(&post, limit))
+                .map(|_| {
+                    telemetry_stop_status(
+                        &post,
+                        control.thermal_limit.expect("guarded thermal limit"),
+                    )
+                });
             control.telemetry.samples.push(post);
-            if hot {
+            if let Some(stop_status) = stop_status {
                 return Ok(Pattern {
                     name: name.into(),
                     bytes: tested,
                     mismatches,
-                    status: "thermal limit".into(),
+                    status: stop_status.into(),
                     windows,
                 });
             }
@@ -656,17 +697,32 @@ fn allocate_resident_set(
     target_bytes: u64,
     chunk_bytes: u64,
     window_bytes: u64,
-    deadline: Instant,
+    control: &mut ExerciseControl<'_>,
 ) -> Result<ResidentSet> {
     let specs = allocation_specs(target_bytes, chunk_bytes, window_bytes);
     let mut allocations = Vec::with_capacity(specs.len());
-    let mut bytes = 0;
+    let mut bytes = 0u64;
     let mut stop_reason = None;
     for spec in specs {
-        if Instant::now() >= deadline {
+        if Instant::now() >= control.deadline {
             stop_reason =
                 Some("The time limit was reached while reserving distinct GPU memory.".into());
             break;
+        }
+        if bytes.is_multiple_of(window_bytes) {
+            let sample = telemetry_sample(
+                control.clock.elapsed().as_millis(),
+                format!("before allocation batch {}", bytes / window_bytes + 1),
+                control.adapter,
+            );
+            let thermal_stop = control
+                .thermal_limit
+                .and_then(|limit| thermal_stop_sample(&sample, limit));
+            control.telemetry.samples.push(sample);
+            if thermal_stop.is_some() {
+                stop_reason = thermal_stop;
+                break;
+            }
         }
         gpu.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let label = format!("field test resident allocation {}", spec.ordinal);
@@ -870,71 +926,128 @@ fn exercise_gpu_allocation(
         complete: true,
     })
 }
-fn thermal_stop(telemetry: &Telemetry, thermal_limit: u8) -> Option<String> {
-    telemetry.samples.last().and_then(|sample| sample.temperature_c).filter(|t| *t >= f64::from(thermal_limit)).map(|t| format!("Stopped before a pattern: GPU temperature is {t:.1}°C, at or above the {thermal_limit}°C limit."))
-}
-fn telemetry_snapshot(at_ms: u128, phase: &str) -> Telemetry {
-    let mut telemetry = Telemetry {
-        provider: "not available".into(),
-        samples: Vec::new(),
-        unavailable_reason: Some("No supported local GPU telemetry provider was found.".into()),
-    };
-    let sample = telemetry_sample(at_ms, phase);
-    if sample.temperature_c.is_some()
-        || sample.core_clock_mhz.is_some()
-        || sample.memory_clock_mhz.is_some()
-    {
-        telemetry.provider = telemetry_provider();
-        telemetry.unavailable_reason = None;
+fn report_exit_code(report: &Report) -> i32 {
+    if report.patterns.iter().any(|pattern| pattern.mismatches > 0) {
+        2
+    } else if report.verdict.status == "incomplete" {
+        1
+    } else {
+        0
     }
-    telemetry.samples.push(sample);
-    telemetry
 }
-fn telemetry_sample(at_ms: u128, phase: impl Into<String>) -> TelemetrySample {
-    let (temperature_c, core_clock_mhz, memory_clock_mhz) =
-        local_telemetry().unwrap_or((None, None, None));
+
+fn save_report_and_exit_code(output: &Path, report: &Report) -> Result<i32> {
+    write_report(output, report)?;
+    Ok(report_exit_code(report))
+}
+
+fn thermal_limit_for_run(
+    telemetry: &Telemetry,
+    allow_no_thermal_stop: bool,
+    allow_software: bool,
+) -> Result<Option<u8>> {
+    if telemetry
+        .samples
+        .last()
+        .is_some_and(|sample| sample.temperature_c.is_some())
+    {
+        return Ok(Some(85));
+    }
+    if allow_no_thermal_stop || allow_software {
+        return Ok(None);
+    }
+    bail!("Not started: temperature telemetry for the selected adapter is unavailable, so the 85°C automatic stop cannot be enforced. Fix the local GPU telemetry provider or, only if you accept manual monitoring, pass --allow-no-thermal-stop.")
+}
+
+fn thermal_stop(telemetry: &Telemetry, thermal_limit: u8) -> Option<String> {
+    telemetry
+        .samples
+        .last()
+        .and_then(|sample| thermal_stop_sample(sample, thermal_limit))
+}
+
+fn thermal_stop_sample(sample: &TelemetrySample, thermal_limit: u8) -> Option<String> {
+    match sample.temperature_c {
+        Some(temperature) if temperature >= f64::from(thermal_limit) => Some(format!(
+            "Stopped safely: selected GPU temperature is {temperature:.1}°C, at or above the {thermal_limit}°C limit."
+        )),
+        None => Some("Stopped safely because selected-adapter temperature telemetry became unavailable; the automatic thermal stop can no longer be enforced.".into()),
+        Some(_) => None,
+    }
+}
+
+fn telemetry_stop_status(sample: &TelemetrySample, thermal_limit: u8) -> &'static str {
+    if sample
+        .temperature_c
+        .is_some_and(|value| value >= f64::from(thermal_limit))
+    {
+        "thermal limit"
+    } else {
+        "temperature telemetry unavailable"
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TelemetryReading {
+    provider: String,
+    temperature_c: Option<f64>,
+    core_clock_mhz: Option<f64>,
+    memory_clock_mhz: Option<f64>,
+}
+
+fn telemetry_snapshot(at_ms: u128, phase: &str, adapter: &Adapter) -> Telemetry {
+    let reading = local_telemetry(adapter);
+    let sample = TelemetrySample {
+        at_ms,
+        phase: phase.into(),
+        temperature_c: reading.as_ref().and_then(|value| value.temperature_c),
+        core_clock_mhz: reading.as_ref().and_then(|value| value.core_clock_mhz),
+        memory_clock_mhz: reading.as_ref().and_then(|value| value.memory_clock_mhz),
+    };
+    Telemetry {
+        provider: reading
+            .as_ref()
+            .map(|value| value.provider.clone())
+            .unwrap_or_else(|| "not available for selected adapter".into()),
+        samples: vec![sample],
+        unavailable_reason: reading.is_none().then(|| {
+            "No unambiguous local temperature provider matched the selected adapter.".into()
+        }),
+    }
+}
+
+fn telemetry_sample(at_ms: u128, phase: impl Into<String>, adapter: &Adapter) -> TelemetrySample {
+    let reading = local_telemetry(adapter);
     TelemetrySample {
         at_ms,
         phase: phase.into(),
-        temperature_c,
-        core_clock_mhz,
-        memory_clock_mhz,
+        temperature_c: reading.as_ref().and_then(|value| value.temperature_c),
+        core_clock_mhz: reading.as_ref().and_then(|value| value.core_clock_mhz),
+        memory_clock_mhz: reading.as_ref().and_then(|value| value.memory_clock_mhz),
     }
 }
-fn telemetry_provider() -> String {
-    if command_text(
-        "nvidia-smi",
-        &[
-            "--query-gpu=temperature.gpu,clocks.sm,clocks.mem",
-            "--format=csv,noheader,nounits",
-        ],
-    )
-    .is_some()
-    {
-        "nvidia-smi".into()
-    } else if command_text("rocm-smi", &["--showtemp", "--showclocks", "--json"]).is_some() {
-        "rocm-smi".into()
-    } else if intel_sysfs_telemetry().is_some() {
-        "Intel DRM sysfs".into()
-    } else {
-        "not available".into()
+
+fn local_telemetry(adapter: &Adapter) -> Option<TelemetryReading> {
+    if adapter.vendor_id == 0x10de {
+        if let Some(text) = command_text(
+            "nvidia-smi",
+            &[
+                "--query-gpu=name,pci.device_id,temperature.gpu,clocks.sm,clocks.mem",
+                "--format=csv,noheader,nounits",
+            ],
+        ) {
+            if let Some(reading) = select_nvidia_telemetry(&text, adapter) {
+                return Some(reading);
+            }
+        }
     }
+    #[cfg(target_os = "linux")]
+    if let Some(reading) = drm_sysfs_telemetry(Path::new("/sys/class/drm"), adapter) {
+        return Some(reading);
+    }
+    None
 }
-fn local_telemetry() -> Option<(Option<f64>, Option<f64>, Option<f64>)> {
-    if let Some(text) = command_text(
-        "nvidia-smi",
-        &[
-            "--query-gpu=temperature.gpu,clocks.sm,clocks.mem",
-            "--format=csv,noheader,nounits",
-        ],
-    ) {
-        return Some(parse_csv_telemetry(&text));
-    }
-    if let Some(text) = command_text("rocm-smi", &["--showtemp", "--showclocks", "--json"]) {
-        return Some(parse_rocm_telemetry(&text));
-    }
-    intel_sysfs_telemetry()
-}
+
 fn command_text(command: &str, args: &[&str]) -> Option<String> {
     Command::new(command)
         .args(args)
@@ -943,87 +1056,97 @@ fn command_text(command: &str, args: &[&str]) -> Option<String> {
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
 }
-fn parse_csv_telemetry(text: &str) -> (Option<f64>, Option<f64>, Option<f64>) {
-    let numbers: Vec<Option<f64>> = text
-        .lines()
-        .next()
-        .unwrap_or_default()
-        .split(',')
-        .map(|n| n.trim().parse().ok())
+
+#[derive(Debug, Clone)]
+struct NvidiaTelemetryRow {
+    name: String,
+    device_id: Option<u32>,
+    temperature_c: Option<f64>,
+    core_clock_mhz: Option<f64>,
+    memory_clock_mhz: Option<f64>,
+}
+
+fn parse_nvidia_telemetry(text: &str) -> Vec<NvidiaTelemetryRow> {
+    text.lines()
+        .filter_map(|line| {
+            let fields: Vec<_> = line.split(',').map(str::trim).collect();
+            Some(NvidiaTelemetryRow {
+                name: fields.first()?.to_string(),
+                device_id: fields
+                    .get(1)
+                    .and_then(|value| parse_nvidia_device_id(value)),
+                temperature_c: fields.get(2).and_then(|value| value.parse().ok()),
+                core_clock_mhz: fields.get(3).and_then(|value| value.parse().ok()),
+                memory_clock_mhz: fields.get(4).and_then(|value| value.parse().ok()),
+            })
+        })
+        .collect()
+}
+
+fn parse_nvidia_device_id(value: &str) -> Option<u32> {
+    let raw = u32::from_str_radix(value.trim_start_matches("0x"), 16).ok()?;
+    Some(if raw > 0xffff { raw >> 16 } else { raw })
+}
+
+fn select_nvidia_telemetry(text: &str, adapter: &Adapter) -> Option<TelemetryReading> {
+    let rows = parse_nvidia_telemetry(text);
+    let matches: Vec<_> = rows
+        .iter()
+        .filter(|row| {
+            (adapter.device_id != 0 && row.device_id == Some(adapter.device_id))
+                || normalize_adapter_name(&row.name) == normalize_adapter_name(&adapter.name)
+        })
         .collect();
-    (
-        numbers.first().copied().flatten(),
-        numbers.get(1).copied().flatten(),
-        numbers.get(2).copied().flatten(),
-    )
+    let [selected] = matches.as_slice() else {
+        return None;
+    };
+    selected.temperature_c?;
+    Some(TelemetryReading {
+        provider: format!("nvidia-smi selected adapter {}", adapter.index),
+        temperature_c: selected.temperature_c,
+        core_clock_mhz: selected.core_clock_mhz,
+        memory_clock_mhz: selected.memory_clock_mhz,
+    })
 }
-fn parse_rocm_telemetry(text: &str) -> (Option<f64>, Option<f64>, Option<f64>) {
-    let value: serde_json::Value = serde_json::from_str(text).unwrap_or_default();
-    let mut temperature = None;
-    let mut core = None;
-    let mut memory = None;
-    collect_rocm_numbers(&value, &mut temperature, &mut core, &mut memory);
-    (temperature, core, memory)
-}
-fn collect_rocm_numbers(
-    value: &serde_json::Value,
-    temperature: &mut Option<f64>,
-    core: &mut Option<f64>,
-    memory: &mut Option<f64>,
-) {
-    match value {
-        serde_json::Value::Object(map) => {
-            for (key, child) in map {
-                let key = key.to_ascii_lowercase();
-                let number = child
-                    .as_f64()
-                    .or_else(|| child.as_str().and_then(first_number));
-                if key.contains("temp") && temperature.is_none() {
-                    *temperature = number;
-                } else if (key.contains("sclk") || key.contains("core clock")) && core.is_none() {
-                    *core = number;
-                } else if (key.contains("mclk") || key.contains("memory clock")) && memory.is_none()
-                {
-                    *memory = number;
-                }
-                collect_rocm_numbers(child, temperature, core, memory);
-            }
-        }
-        serde_json::Value::Array(items) => {
-            for item in items {
-                collect_rocm_numbers(item, temperature, core, memory);
-            }
-        }
-        _ => {}
-    }
-}
-fn first_number(value: &str) -> Option<f64> {
-    value
-        .split(|c: char| !c.is_ascii_digit() && c != '.')
-        .find(|part| !part.is_empty())?
-        .parse()
-        .ok()
-}
-fn intel_sysfs_telemetry() -> Option<(Option<f64>, Option<f64>, Option<f64>)> {
-    if !cfg!(target_os = "linux") {
+
+#[cfg(target_os = "linux")]
+fn drm_sysfs_telemetry(root: &Path, adapter: &Adapter) -> Option<TelemetryReading> {
+    if adapter.vendor_id == 0 || adapter.device_id == 0 {
         return None;
     }
-    let drm = fs::read_dir("/sys/class/drm").ok()?;
-    let mut temperature = None;
-    let mut core = None;
-    for entry in drm.flatten() {
-        let device = entry.path().join("device");
-        if temperature.is_none() {
-            temperature = read_first_glob(&device.join("hwmon"), "temp1_input").map(|n| n / 1000.0);
+    let mut matches = Vec::new();
+    for entry in fs::read_dir(root).ok()?.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name
+            .strip_prefix("card")
+            .is_some_and(|suffix| !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()))
+        {
+            continue;
         }
-        if core.is_none() {
-            core = fs::read_to_string(device.join("gt_cur_freq_mhz"))
-                .ok()
-                .and_then(|n| n.trim().parse().ok());
+        let device = entry.path().join("device");
+        if read_hex_u32(&device.join("vendor")) == Some(adapter.vendor_id)
+            && read_hex_u32(&device.join("device")) == Some(adapter.device_id)
+        {
+            matches.push((name, device));
         }
     }
-    (temperature.is_some() || core.is_some()).then_some((temperature, core, None))
+    let [(name, device)] = matches.as_slice() else {
+        return None;
+    };
+    let temperature_c = read_first_glob(&device.join("hwmon"), "temp1_input").map(|n| n / 1000.0);
+    temperature_c?;
+    let core_clock_mhz = fs::read_to_string(device.join("gt_cur_freq_mhz"))
+        .ok()
+        .and_then(|value| value.trim().parse().ok());
+    Some(TelemetryReading {
+        provider: format!("Linux DRM {name} hwmon"),
+        temperature_c,
+        core_clock_mhz,
+        memory_clock_mhz: None,
+    })
 }
+
+#[cfg(target_os = "linux")]
 fn read_first_glob(root: &Path, file: &str) -> Option<f64> {
     fs::read_dir(root).ok()?.flatten().find_map(|entry| {
         fs::read_to_string(entry.path().join(file))
@@ -1124,8 +1247,29 @@ fn os_memory_adapters() -> Vec<OsMemoryAdapter> {
         }
         return adapters;
     }
+    #[cfg(target_os = "macos")]
+    {
+        return macos_memory_adapters();
+    }
     #[allow(unreachable_code)]
     Vec::new()
+}
+
+#[cfg(target_os = "macos")]
+fn macos_memory_adapters() -> Vec<OsMemoryAdapter> {
+    metal::Device::all()
+        .into_iter()
+        .filter_map(|device| {
+            let total_mib = device.recommended_max_working_set_size() / MIB;
+            (total_mib > 0).then(|| OsMemoryAdapter {
+                name: device.name().to_string(),
+                vendor_id: None,
+                device_id: None,
+                total_mib,
+                source: "Metal recommendedMaxWorkingSetSize".into(),
+            })
+        })
+        .collect()
 }
 
 #[cfg(target_os = "linux")]
@@ -1281,7 +1425,7 @@ fn render_html(r: &Report) -> String {
         format!("<table><thead><tr><th>Phase</th><th>Temperature</th><th>Core clock</th><th>Memory clock</th></tr></thead><tbody>{}</tbody></table>", r.telemetry.samples.iter().map(|sample| format!("<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>", esc(&sample.phase), units(sample.temperature_c, "°C"), units(sample.core_clock_mhz, "MHz"), units(sample.memory_clock_mhz, "MHz"))).collect::<String>())
     };
     format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VRAM Field Test report</title><style>body{{font-family:system-ui;max-width:760px;margin:40px auto;padding:0 20px;color:#181714}}h1{{font-family:monospace}}.pass{{color:#176a44}}.fail{{color:#9c251d}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #777;padding:9px;text-align:left}}.stamp{{border:3px solid;padding:8px;display:inline-block;font-weight:bold}}</style></head><body><main><p>VRAM FIELD TEST / local evidence report</p><h1>Memory pattern report</h1><p class="stamp {status}">{status}</p><p>{summary}</p><h2>Coverage</h2><p>Tested {tested} MiB. Detected VRAM: {detected}. Usable coverage: {coverage}.</p><p>Resident memory: {resident} MiB in {allocation_count} distinct allocation(s). Retained through pattern checks: {retained}.</p><h2>Patterns</h2><table><thead><tr><th>Pattern</th><th>Bytes</th><th>Mismatches</th><th>Windows</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table><h2>Thermals and clocks</h2><p>Provider: {provider}. {telemetry_note}</p>{telemetry_rows}<h2>Limits</h2><p>Thermal stop: {thermal}°C. Total duration limit: {seconds}s. Each GPU chunk is at most {chunk} MiB.</p><h2>Read before using this report</h2><p>{notes}</p></main></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VRAM Field Test report</title><style>body{{font-family:system-ui;max-width:760px;margin:40px auto;padding:0 20px;color:#181714}}h1{{font-family:monospace}}.pass{{color:#176a44}}.fail{{color:#9c251d}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #777;padding:9px;text-align:left}}.stamp{{border:3px solid;padding:8px;display:inline-block;font-weight:bold}}</style></head><body><main><p>VRAM FIELD TEST / local evidence report</p><h1>Memory pattern report</h1><p class="stamp {status}">{status}</p><p>{summary}</p><h2>Coverage</h2><p>Tested {tested} MiB. Detected VRAM: {detected}. Usable coverage: {coverage}.</p><p>Resident memory: {resident} MiB in {allocation_count} distinct allocation(s). Retained through pattern checks: {retained}.</p><h2>Patterns</h2><table><thead><tr><th>Pattern</th><th>Bytes</th><th>Mismatches</th><th>Windows</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table><h2>Thermals and clocks</h2><p>Provider: {provider}. {telemetry_note}</p>{telemetry_rows}<h2>Limits</h2><p>Thermal stop: {thermal}. Total duration limit: {seconds}s. Each GPU chunk is at most {chunk} MiB.</p><h2>Read before using this report</h2><p>{notes}</p></main></body></html>"#,
         status = esc(&r.verdict.status),
         summary = esc(&r.verdict.summary),
         tested = r.limits.tested_mib,
@@ -1302,7 +1446,11 @@ fn render_html(r: &Report) -> String {
         provider = esc(&r.telemetry.provider),
         telemetry_note = esc(r.telemetry.unavailable_reason.as_deref().unwrap_or("")),
         telemetry_rows = telemetry_rows,
-        thermal = r.limits.thermal_limit_c,
+        thermal = r
+            .limits
+            .thermal_limit_c
+            .map(|limit| format!("{limit}°C"))
+            .unwrap_or_else(|| "not active".into()),
         seconds = r.limits.max_seconds,
         chunk = r.limits.chunk_mib,
         notes = r
@@ -1339,7 +1487,7 @@ mod tests {
         assert_eq!(plan.requested_mib, 88_474);
     }
     #[test]
-    fn retained_high_vram_protocol_reports_only_common_completed_coverage() {
+    fn high_vram_plan_uses_unique_allocations_for_the_full_target() {
         let plan = coverage_plan(98_304, None, 90, 16_384);
         let allocations =
             allocation_specs(plan.requested_mib * MIB, MAX_CHUNK_MIB * MIB, 16_384 * MIB);
@@ -1356,25 +1504,10 @@ mod tests {
             assert_ne!(pair[0].ordinal, pair[1].ordinal);
         }
 
-        let completed = ["solid AA", "solid 55", "address XOR"]
-            .into_iter()
-            .map(|name| Pattern {
-                name: name.into(),
-                bytes: allocations.iter().map(|allocation| allocation.bytes).sum(),
-                mismatches: 0,
-                status: "pass".into(),
-                windows: 6,
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(completed_tested_mib(&completed), 88_474);
-        assert!(completed_tested_mib(&completed) as f64 / 98_304.0 * 100.0 >= 90.0);
-
-        let incomplete = &completed[..2];
-        assert_eq!(completed_tested_mib(incomplete), 0);
         assert_eq!(
             allocations.len(),
             1_383,
-            "the residency set stays live through all checks"
+            "the full target is split into unique allocations"
         );
     }
     #[test]
@@ -1432,15 +1565,105 @@ mod tests {
         );
     }
     #[test]
-    fn telemetry_parsers_keep_temperature_and_clocks() {
+    fn selected_adapter_telemetry_never_falls_back_to_the_first_gpu() {
+        let selected = Adapter {
+            index: 1,
+            name: "NVIDIA RTX 4090".into(),
+            backend: "WebGPU Vulkan".into(),
+            device_type: "discrete GPU".into(),
+            vendor_id: 0x10de,
+            device_id: 0x2684,
+            detected_vram_mib: Some(24_564),
+            source: "fixture".into(),
+        };
+        let rows = "NVIDIA RTX 6000 Ada, 0x26B110DE, 79, 1530, 9501\nNVIDIA RTX 4090, 0x268410DE, 61, 2200, 10001\n";
+        let reading = select_nvidia_telemetry(rows, &selected).unwrap();
+        assert_eq!(reading.temperature_c, Some(61.0));
+        assert_eq!(reading.core_clock_mhz, Some(2200.0));
+
+        let ambiguous = "NVIDIA RTX 4090, 0x268410DE, 61, 2200, 10001\nNVIDIA RTX 4090, 0x268410DE, 73, 2100, 9999\n";
+        assert!(select_nvidia_telemetry(ambiguous, &selected).is_none());
+    }
+    #[test]
+    fn hardware_run_requires_temperature_and_stops_if_it_disappears() {
+        let unavailable = Telemetry {
+            provider: "not available for selected adapter".into(),
+            samples: vec![TelemetrySample {
+                at_ms: 0,
+                phase: "before run".into(),
+                temperature_c: None,
+                core_clock_mhz: None,
+                memory_clock_mhz: None,
+            }],
+            unavailable_reason: Some("fixture".into()),
+        };
+        let error = thermal_limit_for_run(&unavailable, false, false).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("selected adapter is unavailable"));
         assert_eq!(
-            parse_csv_telemetry("71, 1530, 9501\n"),
-            (Some(71.0), Some(1530.0), Some(9501.0))
+            thermal_limit_for_run(&unavailable, true, false).unwrap(),
+            None
         );
-        let parsed = parse_rocm_telemetry(
-            r#"{"card":{"Temperature (Sensor edge)": "58.0c", "sclk clock speed": "1900Mhz", "mclk clock speed": "900Mhz"}}"#,
+        assert_eq!(
+            thermal_limit_for_run(&unavailable, false, true).unwrap(),
+            None
         );
-        assert_eq!(parsed, (Some(58.0), Some(1900.0), Some(900.0)));
+        assert!(thermal_stop_sample(&unavailable.samples[0], 85)
+            .unwrap()
+            .contains("became unavailable"));
+
+        let available = Telemetry {
+            samples: vec![TelemetrySample {
+                temperature_c: Some(55.0),
+                ..unavailable.samples[0].clone()
+            }],
+            unavailable_reason: None,
+            ..unavailable
+        };
+        assert_eq!(
+            thermal_limit_for_run(&available, false, false).unwrap(),
+            Some(85)
+        );
+        let hot = TelemetrySample {
+            temperature_c: Some(85.0),
+            ..available.samples[0].clone()
+        };
+        assert!(thermal_stop_sample(&hot, 85)
+            .unwrap()
+            .contains("at or above the 85°C limit"));
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn drm_telemetry_reads_only_the_selected_adapter() {
+        let root = tempfile::tempdir().unwrap();
+        for (card, vendor, device, temperature) in [
+            ("card0", "0x1002", "0x744c", "79000"),
+            ("card1", "0x8086", "0x56c0", "57000"),
+        ] {
+            let path = root.path().join(card).join("device");
+            fs::create_dir_all(path.join("hwmon").join("hwmon0")).unwrap();
+            fs::write(path.join("vendor"), vendor).unwrap();
+            fs::write(path.join("device"), device).unwrap();
+            fs::write(
+                path.join("hwmon").join("hwmon0").join("temp1_input"),
+                temperature,
+            )
+            .unwrap();
+        }
+        let selected = Adapter {
+            index: 1,
+            name: "Intel Arc".into(),
+            backend: "WebGPU Vulkan".into(),
+            device_type: "discrete GPU".into(),
+            vendor_id: 0x8086,
+            device_id: 0x56c0,
+            detected_vram_mib: Some(16_384),
+            source: "fixture".into(),
+        };
+        let reading = drm_sysfs_telemetry(root.path(), &selected).unwrap();
+        assert_eq!(reading.temperature_c, Some(57.0));
+        assert!(reading.provider.contains("card1"));
     }
     #[test]
     fn html_includes_coverage_and_telemetry() {
@@ -1455,8 +1678,38 @@ mod tests {
         let report: Report =
             serde_json::from_str(include_str!("../examples/sample-report.json")).unwrap();
         let directory = tempfile::tempdir().unwrap();
-        write_report(directory.path(), &report).unwrap();
+        assert_eq!(
+            save_report_and_exit_code(directory.path(), &report).unwrap(),
+            0
+        );
         assert!(directory.path().join("report.json").is_file());
         assert!(directory.path().join("report.html").is_file());
+    }
+    #[test]
+    fn stop_reports_are_saved_and_mismatches_map_to_exit_two() {
+        let mut report: Report =
+            serde_json::from_str(include_str!("../examples/sample-report.json")).unwrap();
+        report.verdict.status = "incomplete".into();
+        report.verdict.summary = "Stopped safely at the time limit.".into();
+        report.patterns.truncate(2);
+        let directory = tempfile::tempdir().unwrap();
+        assert_eq!(
+            save_report_and_exit_code(directory.path(), &report).unwrap(),
+            1
+        );
+        let saved: Report = serde_json::from_str(
+            &fs::read_to_string(directory.path().join("report.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved.verdict.status, "incomplete");
+        assert_eq!(report_exit_code(&saved), 1);
+        assert!(directory.path().join("report.html").is_file());
+
+        report.verdict.status = "fail".into();
+        report.patterns[0].mismatches = 1;
+        assert_eq!(
+            save_report_and_exit_code(directory.path(), &report).unwrap(),
+            2
+        );
     }
 }
