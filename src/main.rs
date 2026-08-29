@@ -1414,8 +1414,22 @@ mod tests {
         fs::create_dir_all(root.path().join("renderD128").join("device")).unwrap();
         let adapters = linux_drm_memory_adapters(root.path());
         assert_eq!(adapters.len(), 2);
-        assert_eq!(adapters[0].total_mib, 24_576);
-        assert_eq!(adapters[1].total_mib, 16_384);
+        assert_eq!(
+            adapters
+                .iter()
+                .find(|adapter| adapter.vendor_id == Some(0x1002))
+                .unwrap()
+                .total_mib,
+            24_576
+        );
+        assert_eq!(
+            adapters
+                .iter()
+                .find(|adapter| adapter.vendor_id == Some(0x8086))
+                .unwrap()
+                .total_mib,
+            16_384
+        );
     }
     #[test]
     fn telemetry_parsers_keep_temperature_and_clocks() {
