@@ -141,7 +141,7 @@ test('@claim:unlock-allowance server returns 429 and Retry-After past eight chec
       return { status: 200, headers: { get: () => null }, text: async () => '{"valid":false,"reason":"invalid"}' };
     }
   });
-  const request = index => ({ query: { license: `invalid-license-${index}` }, headers: { 'x-forwarded-for': '203.0.113.9' } });
+  const request = index => ({ query: { license: `invalid-license-${index}` }, headers: { 'x-forwarded-for': `203.0.113.9:${41000 + index}, 10.0.0.1` } });
   for (let index = 0; index < ALLOWANCE; index += 1) {
     const result = await handler({ log: console }, request(index));
     assert.equal(result.status, 200);

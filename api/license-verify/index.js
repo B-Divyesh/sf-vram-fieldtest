@@ -10,11 +10,14 @@ function header(req, name) {
 }
 
 function clientKey(req) {
-  const forwarded = header(req, 'x-forwarded-for');
-  return String(forwarded || header(req, 'x-azure-clientip') || 'unknown')
+  const forwarded = header(req, 'x-azure-clientip') || header(req, 'x-forwarded-for');
+  const address = String(forwarded || 'unknown')
     .split(',')[0]
     .trim()
     .slice(0, 128);
+  if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(address)) return address.replace(/:\d+$/, '');
+  const bracketedIpv6 = address.match(/^\[([^\]]+)\](?::\d+)?$/);
+  return bracketedIpv6 ? bracketedIpv6[1] : address;
 }
 
 function response(status, body, headers = {}) {
