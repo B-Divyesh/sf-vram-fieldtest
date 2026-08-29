@@ -10,7 +10,7 @@ const licenseVerify = require('../api/license-verify/index.js');
 const packageData = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 let sourceCommit;
 try {
-  sourceCommit = execFileSync('git', ['rev-parse', `v${packageData.version}^{commit}`], { cwd: new URL('..', import.meta.url), encoding: 'utf8' }).trim();
+  sourceCommit = execFileSync('git', ['rev-parse', `v${packageData.version}^{commit}`], { cwd: new URL('..', import.meta.url), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 } catch {
   sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: new URL('..', import.meta.url), encoding: 'utf8' }).trim();
 }
