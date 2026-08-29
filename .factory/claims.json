@@ -28,11 +28,11 @@
     "sandbox": "invoke a real run without consent and assert it stops before opening an adapter"
   },
   {
-    "id": "safety-cap",
-    "claim": "Requested memory is capped at 16,384 MiB.",
-    "where": "README",
-    "test": "npm test -- --grep @claim:safety-cap",
-    "sandbox": "request 16,385 MiB with consent and assert rejection before GPU access"
+    "id": "high-vram-coverage",
+    "claim": "The default plan covers at least 90% of detected VRAM in bounded windows.",
+    "where": "Landing protocol, README",
+    "test": "npm test -- --grep @claim:high-vram-coverage",
+    "sandbox": "model a 98,304 MiB adapter and assert the plan covers at least 90% in more than one window"
   },
   {
     "id": "installer-checksum",
@@ -68,5 +68,12 @@
     "where": "Landing paid tier, Report Kit page",
     "test": "npm test -- --grep @claim:report-kit-output",
     "sandbox": "seed a cached valid fixture license; upload bundled report JSON; assert cover, labels, and no verification request"
+  },
+  {
+    "id": "license-rate-limit",
+    "claim": "The browser makes at most one background license check per day and honors Retry-After when the license service limits requests.",
+    "where": "Privacy page, Terms",
+    "test": "npm test -- --grep @claim:license-rate-limit",
+    "sandbox": "mock a 429 verification response with Retry-After; assert the browser stores the hold and makes no second request"
   }
 ]

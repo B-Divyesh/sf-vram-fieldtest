@@ -61,7 +61,13 @@ Run only with working cooling and a clear view of the machine:
 vram-fieldtest run --yes --mib 512 --output ./gpu-record
 ```
 
-`--yes` is explicit consent for a compute memory test. `--mib` is bounded to 16,384 MiB in v0.1; start at 256 MiB. The result records actual tested MiB and, when the OS exposes it, detected VRAM and coverage. A failed pattern exits with code 2. Use `--json` for a machine-readable final summary.
+`--yes` is explicit consent for a compute memory test. By default, the tool plans 90% of detected VRAM and verifies that total in bounded allocator windows. Use `--mib` to set a total coverage amount, or `--window-mib` to choose the largest allocator window (up to 16,384 MiB). The report records completed MiB, aggregate coverage, thermal samples, clock samples, and any unavailable local telemetry provider. A time or thermal stop saves an incomplete report before exit. A failed pattern exits with code 2. Use `--json` for a machine-readable final summary.
+
+Plan a high-VRAM run without opening the GPU:
+
+```sh
+vram-fieldtest plan --detected-mib 98304 --coverage 90 --window-mib 16384 --json
+```
 
 The tool runs three patterns: solid `AA`, solid `55`, and an address XOR value. It allocates a WebGPU storage buffer, writes each pattern on the selected adapter, copies it back, then checks every word. It keeps no telemetry; reports only write to the directory you select.
 
@@ -90,4 +96,4 @@ npm test -- --grep @claim:demo-report
 
 ## License and privacy
 
-MIT. See [LICENSE](LICENSE). The site has [privacy](https://vram-fieldtest.sociobot.in/privacy) and [terms](https://vram-fieldtest.sociobot.in/terms) pages. The optional $19 Report Kit reads a local report and creates a printable cover and batch labels. It never gates the core test or report export.
+MIT. See [LICENSE](LICENSE). The site has [privacy](https://vram-fieldtest.sociobot.in/privacy) and [terms](https://vram-fieldtest.sociobot.in/terms) pages. The optional $19 Report Kit reads a local report and creates a printable cover and batch labels. It never gates the core test or report export. The browser makes at most one background license check each 24 hours; if the service returns 429, it honors `Retry-After` before another check.

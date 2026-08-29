@@ -9,7 +9,7 @@ The first screen reads aloud in one breath: “Test GPU memory before money chan
 | See a finished report and the exact test limits. | 9 | — |
 | Runs locally. | 2 | — |
 | No account. | 2 | — |
-| Reports tested coverage, not guesses. | 5 | — |
+| Defaults to 90% detected coverage in windows. | 7 | — |
 | Free core test. | 3 | — |
 | $19 Report Kit. | 3 | — |
 | See the result before you install. | 7 | — |

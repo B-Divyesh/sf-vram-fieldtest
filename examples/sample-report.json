@@ -2,8 +2,9 @@
   "schema": "vram-fieldtest/report-1", "tool_version": "0.1.0", "started_at": "2026-08-28T12:00:00Z", "duration_ms": 8420,
   "host": {"os":"linux","hostname":"sample-bench"},
   "adapter": {"name":"Example GPU 12 GB","backend":"portable host-visible safety pass","detected_vram_mib":12288,"source":"sample driver record"},
-  "limits": {"requested_mib":11520,"tested_mib":11520,"detected_vram_mib":12288,"coverage_percent":93.75,"thermal_limit_c":85,"max_seconds":180},
+  "limits": {"requested_mib":11520,"tested_mib":11520,"detected_vram_mib":12288,"coverage_percent":93.75,"coverage_target_percent":90,"window_mib":1024,"chunk_mib":64,"thermal_limit_c":85,"max_seconds":180},
   "patterns": [{"name":"solid AA","bytes":4026531840,"mismatches":0,"status":"pass"},{"name":"solid 55","bytes":4026531840,"mismatches":0,"status":"pass"},{"name":"address XOR","bytes":4026531840,"mismatches":0,"status":"pass"}],
+  "telemetry":{"provider":"sample driver record","samples":[{"at_ms":0,"phase":"before run","temperature_c":54.0,"core_clock_mhz":1420.0,"memory_clock_mhz":7000.0},{"at_ms":8420,"phase":"after run","temperature_c":61.0,"core_clock_mhz":1510.0,"memory_clock_mhz":7000.0}],"unavailable_reason":null},
   "verdict":{"status":"pass","summary":"No mismatches in 11,520 MiB across 3 patterns."},
   "notes":["Sample report only. Demo data is not a result from your GPU.","A pass is evidence for this bounded pattern run. It does not certify every GPU fault."]
 }

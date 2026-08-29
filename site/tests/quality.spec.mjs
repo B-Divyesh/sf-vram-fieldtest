@@ -57,6 +57,26 @@ test('@claim:report-kit-output active Report Kit turns local JSON into a cover a
   expect(requests.some(url => url.includes('/verify?'))).toBeFalsy();
 });
 
+test('@claim:license-rate-limit Retry-After prevents repeated license checks', async ({ page }) => {
+  let checks = 0;
+  await page.route('https://api.sociobot.in/api/v1/products/vram-fieldtest/verify**', route => {
+    checks += 1;
+    return route.fulfill({ status: 429, headers: { 'Access-Control-Expose-Headers': 'Retry-After', 'Retry-After': '120' }, body: '{}' });
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem('sb_license:vram-fieldtest', 'fixture-license');
+    localStorage.setItem('sb_license_check:vram-fieldtest', JSON.stringify({ at: 0, valid: false }));
+  });
+  await page.goto('/');
+  await expect.poll(() => checks).toBe(1);
+  await page.getByText('Have a license?', { exact: true }).click();
+  await page.locator('#license').fill('fixture-license');
+  await page.getByRole('button', { name: 'Restore license' }).click();
+  await expect(page.getByText('License checks are temporarily limited. Try again after', { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => Number(localStorage.getItem('sb_license_retry:vram-fieldtest')) > Date.now())).toBeTruthy();
+  expect(checks).toBe(1);
+});
+
 test('keyboard navigation, route focus, and back button work', async ({ page }) => {
   await page.goto('/');
   await page.keyboard.press('Tab');

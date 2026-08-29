@@ -20,8 +20,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - name: Test and build
-        run: npm test && npm run build
+      - name: Test, build, and strict lint
+        run: npm test && npm run build && cargo fmt --check && cargo clippy --locked -- -D warnings
 
   build:
     needs: verify

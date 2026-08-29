@@ -61,10 +61,12 @@ test('@claim:safety-consent real runs require explicit consent', () => {
   assert.match(result.stderr, /pass --yes/);
 });
 
-test('@claim:safety-cap oversized real runs stop before opening a GPU', () => {
-  const result = spawnSync('target/debug/vram-fieldtest', ['run', '--yes', '--mib', '16385'], { encoding: 'utf8' });
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /between 1 and 16384 MiB/);
+test('@claim:high-vram-coverage 96 GiB plans cover at least 90 percent in multiple windows', () => {
+  const output = execFileSync('target/debug/vram-fieldtest', ['plan', '--detected-mib', '98304', '--coverage', '90', '--window-mib', '16384', '--json'], { encoding: 'utf8' });
+  const plan = JSON.parse(output);
+  assert.ok(plan.coverage_percent >= 90);
+  assert.equal(plan.requested_mib, 88474);
+  assert.equal(plan.windows, 6);
 });
 
 test('@claim:installer-checksum shell installer downloads, verifies, and installs', async () => {
@@ -113,7 +115,22 @@ test('service worker update policy matches the package version', () => {
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
   const worker = readFileSync('site/public/sw.js', 'utf8');
   assert.match(worker, new RegExp(`v${pkg.version.replaceAll('.', '\\.')}`));
+  assert.match(worker, /'\/app\.js'/);
+  assert.match(worker, /'\/styles\.css'/);
   assert.match(worker, /keys\.filter\(key => key !== CACHE\).*caches\.delete/);
   assert.match(worker, /self\.skipWaiting\(\)/);
   assert.match(worker, /self\.clients\.claim\(\)/);
+});
+
+test('hashed site assets receive the immutable cache route', () => {
+  execFileSync('npm', ['run', 'build:site'], { stdio: 'pipe' });
+  const index = readFileSync('dist/site/index.html', 'utf8');
+  assert.match(index, /\/assets\/app\.[a-f0-9]{12}\.js/);
+  assert.match(index, /\/assets\/styles\.[a-f0-9]{12}\.css/);
+  assert.equal(existsSync('dist/site/app.js'), false);
+  assert.equal(existsSync('dist/site/styles.css'), false);
+  const worker = readFileSync('dist/site/sw.js', 'utf8');
+  assert.match(worker, /\/assets\/app\.[a-f0-9]{12}\.js/);
+  assert.match(worker, /\/assets\/styles\.[a-f0-9]{12}\.css/);
+  assert.match(readFileSync('staticwebapp.config.json', 'utf8'), /"\/assets\/\*"[\s\S]*immutable/);
 });
