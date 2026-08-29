@@ -2,7 +2,7 @@ const root = document.querySelector('#app');
 const repo = 'B-Divyesh/sf-vram-fieldtest';
 const product = 'vram-fieldtest';
 const billing = 'https://api.sociobot.in/api/v1';
-const releaseTag = 'v0.1.4';
+const releaseTag = 'v0.1.5';
 const LICENSE_CHECK_MS = 86400000;
 const retryKey = `sb_license_retry:${product}`;
 const demo = () => new URLSearchParams(location.search).get('demo') === '1' || location.pathname === '/demo';
@@ -18,7 +18,7 @@ const pageMeta = {
 };
 
 function header(){return `<header class="mast"><div class="shell"><a class="wordmark" href="/" data-link><i></i>VRAM FIELD TEST</a><nav aria-label="Main navigation"><a href="/demo" data-link>Demo</a><a href="/#install">Install</a><a href="/report-kit" data-link>Report Kit</a><a href="/privacy" data-link>Privacy</a></nav></div></header>`}
-function footer(){return `<footer class="footer"><div class="shell"><span>Local GPU memory evidence, not a benchmark.</span><span><a href="/privacy" data-link>Privacy</a> · <a href="/terms" data-link>Terms</a> · Built by Param Factory · v0.1.4</span></div></footer>`}
+function footer(){return `<footer class="footer"><div class="shell"><span>Local GPU memory evidence, not a benchmark.</span><span><a href="/privacy" data-link>Privacy</a> · <a href="/terms" data-link>Terms</a> · Built by Param Factory · v0.1.5</span></div></footer>`}
 function demoBar(){return `<aside class="demo-banner" aria-label="Demo mode"><div class="shell"><span>Demo — sample data, nothing is saved.</span><span><button type="button" id="reset-demo">Reset demo</button> <a class="button" href="/" data-link>Start for real</a></span></div></aside>`}
 function hero(){return `<section class="hero shell"><div><h1 tabindex="-1">Test GPU memory before money changes hands.</h1><p class="sub">For buyers, resellers, and repair benches who need a clear memory test record.</p><div class="actions"><a class="button primary" href="/?demo=1" data-link>Try it with sample data</a><p class="after">See a finished report and the exact test limits.</p></div><ul class="facts"><li>Runs locally with no account.</li><li>Tests 90% of reported memory in safe batches.</li><li>Free core test. Report Kit costs $19 once.</li></ul></div><figure class="hero-art"><img src="/hero-vram-small.webp" width="1000" height="666" alt=""><span class="registration"></span></figure></section>`}
 function preview(sample=true){return `<div class="preview" aria-label="Example terminal report"><div class="terminal-top">${sample?'DEMO OUTPUT — bundled sample report':'INSTALL OUTPUT — your machine'}</div><div class="terminal-body"><p><span class="good">$</span> vram-fieldtest ${sample?'demo':'run --yes --mib 512'}</p><p>ADAPTER: ${sample?'Example GPU 12 GB':'Detecting graphics adapter…'}</p><p>MEMORY TESTED: <span class="good">${sample?'11.25 GB of 12 GB':'512 MiB'}</span></p><p>CHECKS: three memory patterns completed</p><p>RESULT: <span class="good">PASS — 0 mismatches</span></p><p>FILES: report.json + print-ready report.html</p><p class="warn">A pass records this test only.</p></div></div>`}

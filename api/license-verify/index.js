@@ -63,7 +63,7 @@ function createLicenseHandler({
 
     try {
       const upstream = await fetchImpl(`${UPSTREAM}?license=${encodeURIComponent(token)}`, {
-        headers: { Accept: 'application/json', 'User-Agent': 'vram-fieldtest/0.1.4' }
+        headers: { Accept: 'application/json', 'User-Agent': 'vram-fieldtest/0.1.5' }
       });
       const body = await upstream.text();
       const retryAfter = upstream.headers?.get?.('Retry-After');

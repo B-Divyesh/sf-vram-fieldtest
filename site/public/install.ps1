@@ -1,14 +1,15 @@
 $ErrorActionPreference = 'Stop'
 $repo = 'B-Divyesh/sf-vram-fieldtest'
-$expected = 'v0.1.4'
+$expected = 'v0.1.5'
 $releaseApi = if ($env:VRAM_FIELDTEST_RELEASE_API) { $env:VRAM_FIELDTEST_RELEASE_API } else { "https://api.github.com/repos/$repo/releases/latest" }
 $identityUrl = if ($env:VRAM_FIELDTEST_IDENTITY_URL) { $env:VRAM_FIELDTEST_IDENTITY_URL } else { 'https://vram-fieldtest.sociobot.in/release.json' }
 $commitApi = if ($env:VRAM_FIELDTEST_COMMIT_API) { $env:VRAM_FIELDTEST_COMMIT_API } else { "https://api.github.com/repos/$repo/commits/$expected" }
 $release = Invoke-RestMethod $releaseApi
 if ($release.tag_name -ne $expected) { throw "Downloads for $expected are not published yet. See https://github.com/$repo/releases" }
-$expectedCommit = (Invoke-RestMethod $identityUrl).source_commit
+$identity = Invoke-RestMethod $identityUrl
+$expectedCommit = $identity.source_commit
 $publishedCommit = (Invoke-RestMethod $commitApi).sha
-if (-not $expectedCommit -or $publishedCommit -ne $expectedCommit) { throw "Downloads for $expected do not match this site build yet. See https://github.com/$repo/releases" }
+if ($identity.tag -ne $expected -or -not $expectedCommit -or $publishedCommit -ne $expectedCommit) { throw "Downloads for $expected do not match this site build yet. See https://github.com/$repo/releases" }
 $asset = $release.assets | Where-Object { $_.name -match 'windows-x86_64\.zip$' } | Select-Object -First 1
 $sums = $release.assets | Where-Object { $_.name -eq 'SHA256SUMS' } | Select-Object -First 1
 $provenance = $release.assets | Where-Object { $_.name -eq 'PROVENANCE.json' } | Select-Object -First 1

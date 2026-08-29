@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 repo="B-Divyesh/sf-vram-fieldtest"
-expected="v0.1.4"
+expected="v0.1.5"
 api="${VRAM_FIELDTEST_RELEASE_API:-https://api.github.com/repos/$repo/releases/latest}"
 identity_api="${VRAM_FIELDTEST_IDENTITY_URL:-https://vram-fieldtest.sociobot.in/release.json}"
 commit_api="${VRAM_FIELDTEST_COMMIT_API:-https://api.github.com/repos/$repo/commits/$expected}"
@@ -13,9 +13,11 @@ json="$(curl -fsSL "$api")"
 tag="$(printf '%s' "$json" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
 [ "$tag" = "$expected" ] || { echo "Downloads for $expected are not published yet. See https://github.com/$repo/releases" >&2; exit 1; }
 identity="$(curl -fsSL "$identity_api")"
+identity_tag="$(printf '%s' "$identity" | sed -n 's/.*"tag": *"\([^"]*\)".*/\1/p' | head -1)"
 expected_commit="$(printf '%s' "$identity" | sed -n 's/.*"source_commit": *"\([^"]*\)".*/\1/p' | head -1)"
-published_commit="$(curl -fsSL "$commit_api" | sed -n 's/^[[:space:]]*"sha": *"\([^"]*\)".*/\1/p' | head -1)"
-[ -n "$expected_commit" ] && [ "$published_commit" = "$expected_commit" ] || { echo "Downloads for $expected do not match this site build yet. See https://github.com/$repo/releases" >&2; exit 1; }
+commit_json="$(curl -fsSL "$commit_api")"
+published_commit="$(printf '%s' "$commit_json" | tr ',' '\n' | sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+[ "$identity_tag" = "$expected" ] && [ -n "$expected_commit" ] && [ "$published_commit" = "$expected_commit" ] || { echo "Downloads for $expected do not match this site build yet. See https://github.com/$repo/releases" >&2; exit 1; }
 url="$(printf '%s' "$json" | sed -n "s/.*\"browser_download_url\": \"\([^\"]*${os}-${arch}\.tar\.gz\)\".*/\1/p" | head -1)"
 sumurl="$(printf '%s' "$json" | sed -n 's/.*"browser_download_url": "\([^"]*SHA256SUMS\)".*/\1/p' | head -1)"
 provenance_url="$(printf '%s' "$json" | sed -n 's/.*"browser_download_url": "\([^"]*PROVENANCE\.json\)".*/\1/p' | head -1)"

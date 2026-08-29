@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5 — 2026-08-29
+
+- Parse minified GitHub commit responses before installing a release.
+- Require both the deployed tag and source commit to match the download.
+
 ## 0.1.4 — 2026-08-29
 
 - Retain distinct GPU allocations through all three memory checks and report only commonly completed memory.

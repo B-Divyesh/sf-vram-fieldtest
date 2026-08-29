@@ -4,17 +4,17 @@ import { execFileSync } from 'node:child_process';
 
 let sourceCommit;
 try {
-  sourceCommit = execFileSync('git', ['rev-parse', 'v0.1.4^{commit}'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  sourceCommit = execFileSync('git', ['rev-parse', 'v0.1.5^{commit}'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 } catch {
   sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 }
 
 const releaseFixture = {
-  tag_name: 'v0.1.4',
+  tag_name: 'v0.1.5',
   assets: [
-    { name: 'vram-fieldtest-linux-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.4/vram-fieldtest-linux-x86_64.tar.gz' },
-    { name: 'vram-fieldtest-windows-x86_64.zip', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.4/vram-fieldtest-windows-x86_64.zip' },
-    { name: 'vram-fieldtest-macos-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.4/vram-fieldtest-macos-x86_64.tar.gz' },
+    { name: 'vram-fieldtest-linux-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.5/vram-fieldtest-linux-x86_64.tar.gz' },
+    { name: 'vram-fieldtest-windows-x86_64.zip', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.5/vram-fieldtest-windows-x86_64.zip' },
+    { name: 'vram-fieldtest-macos-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.5/vram-fieldtest-macos-x86_64.tar.gz' },
     { name: 'SHA256SUMS', size: 800, browser_download_url: 'https://github.com/example/SHA256SUMS' },
     { name: 'latest.json', size: 800, browser_download_url: 'https://github.com/example/latest.json' },
     { name: 'PROVENANCE.json', size: 800, browser_download_url: 'https://github.com/example/PROVENANCE.json' }
@@ -31,7 +31,7 @@ test('@claim:release-download landing picks a real platform release asset', asyn
   const download = page.getByRole('link', { name: 'Download for windows' });
   await expect(download).toBeVisible();
   await expect(download).toHaveAttribute('href', /v0\.1\.4\/vram-fieldtest-windows-x86_64\.zip$/);
-  await expect(page.getByText('v0.1.4 · 2 MB')).toBeVisible();
+  await expect(page.getByText('v0.1.5 · 2 MB')).toBeVisible();
 });
 
 test('release update replaces a fresh cache entry from the previous version', async ({ page }) => {
@@ -41,7 +41,7 @@ test('release update replaces a fresh cache entry from the previous version', as
   })));
   await page.goto('/');
   await expect(page.getByRole('link', { name: 'Download for windows' })).toHaveAttribute('href', /v0\.1\.4\//);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('vram:release')).data.tag_name)).toBe('v0.1.4');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('vram:release')).data.tag_name)).toBe('v0.1.5');
 });
 
 test('regression: landing refuses an expected release tag from another commit', async ({ page }) => {
