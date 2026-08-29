@@ -78,7 +78,7 @@ cargo package --locked --allow-dirty
 - Strict checks: JavaScript syntax, shell syntax, Rust format, and Clippy with
   warnings denied all pass.
 - Production build writes `dist/site` and `target/release/vram-fieldtest`.
-- Cargo package verification: 55 files, 330.6 KiB.
+- Cargo package verification: 56 files, 331.4 KiB.
 - Fresh `cargo install --locked --path .` consumer reports 0.1.3, writes the
   demo JSON and HTML, returns the exact six-window 96 GiB plan, rejects 101%
   coverage with exit 2, requires `--yes`, and gives the documented no-adapter
@@ -93,9 +93,11 @@ Non-publishing native matrix rehearsals:
 - <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33261439507>
 - <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33261753557>
 - <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33262110739>
+- <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33262429639>
 
-The second run reproduced the first run's release archive hashes after the
-package manifests were committed:
+The first repeat exposed varying MSVC PE metadata. After adding `/Brepro`, the
+final two runs produced byte-identical Windows archives. All four final archive
+hashes match the committed package manifests:
 
 | Artifact | SHA-256 |
 |---|---|
