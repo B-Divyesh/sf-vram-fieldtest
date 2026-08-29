@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.6 — 2026-08-29
+
+- Refuse hardware stress without temperature data for the selected adapter.
+- Stop safely if selected-adapter temperature data disappears during a run.
+- Read macOS memory capacity from Metal's recommended working-set size.
+- Repair disclosure focus rings and small touch targets.
+- Register and test the remaining user-facing safety claims.
+
 ## 0.1.5 — 2026-08-29
 
 - Parse minified GitHub commit responses before installing a release.

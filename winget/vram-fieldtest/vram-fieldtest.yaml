@@ -1,5 +1,5 @@
 PackageIdentifier: Sociobot.VRAMFieldTest
-PackageVersion: 0.1.5
+PackageVersion: 0.1.6
 PackageLocale: en-US
 Publisher: Sociobot
 PackageName: VRAM Field Test
@@ -8,7 +8,7 @@ License: MIT
 InstallerType: zip
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.5/vram-fieldtest-windows-x86_64.zip
+    InstallerUrl: https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.6/vram-fieldtest-windows-x86_64.zip
     InstallerSha256: 41BD4B7522D529C82D43AA089F9C807FB19D5E3DE305ADEADBD1A7B4103573A7
 ManifestType: installer
 ManifestVersion: 1.6.0
