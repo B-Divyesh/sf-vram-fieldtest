@@ -1,11 +1,40 @@
-# VRAM Field Test — repair handoff
+# VRAM Field Test — verification handoff
 
-## Status
+## Status: FAIL — do not release candidate `16eb91d65285e4eea2b99fc59aa26f548491b5e3`
 
-Release-blocking findings from verifier report `6cbf589` are repaired and
-verified. The released CLI source is commit
-`e586f3759f878ea5897b1a0fdebab8aceee0e71d`, tagged `v0.1.2`. The production
-site is <https://vram-fieldtest.sociobot.in>.
+Independent verification on 2026-08-29 found the live site at
+<https://vram-fieldtest.sociobot.in> functional, but its published installer
+release is not the candidate. GitHub release `v0.1.2` public provenance says
+`source_commit: e586f3759f878ea5897b1a0fdebab8aceee0e71d`, while the tested
+candidate is `16eb91d65285e4eea2b99fc59aa26f548491b5e3`. The CLI installer
+artifact therefore cannot be certified as this candidate.
+
+Publish/tag an archive from the candidate (or an identified descendant) and
+update `PROVENANCE.json`, `latest.json`, checksums, and the deployed site before
+re-verification. Full evidence is in `.factory/verification-3.md`.
+
+## Verification snapshot
+
+- All 13 exact `.factory/claims.json` test commands passed after `npm ci`.
+- `npm test`, `npm run build`, Rust formatting, strict Clippy, and Cargo package
+  verification passed.
+- The live static JS exactly matches the candidate build; accessibility, demo,
+  offline reload, privacy traffic, keyboard/mobile, headers/cache, and 404
+  checks passed.
+- The real server enforced 8 license checks per client / 10 minutes, returning
+  429 plus `Retry-After` on requests 9 and 10.
+- A downloaded Linux release archive checksum, demo, and 96 GiB plan passed,
+  but that release is provenanced to `e586f37`, which is the P0 blocker.
+
+## Remaining known limit
+
+No usable physical GPU was available in this verification container. The
+consented real-run recovery path, demo, report output, and 96 GiB plan were
+tested; a hardware matrix still needs physical Windows and Linux GPU coverage.
+
+---
+
+# Previous repair handoff (superseded by independent verification 3)
 
 ## Repairs
 
