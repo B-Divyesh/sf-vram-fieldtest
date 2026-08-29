@@ -1,83 +1,41 @@
-# VRAM Field Test repair — ready for deployment
+# VRAM Field Test — independent QA handoff
 
-Repaired verifier candidate `99a70a94e075848ab3b33491a7bb287d095afec3` from report
-[`verification-1.md`](verification-1.md). Repair source commit:
-`aed596f0554ec63b8d47bd5eae5bda26083c51e5`.
+## **FAIL — release blocked**
 
-## Fixed release blockers
+Independent verification of candidate
+`7cf53e1269aa16d73ec5550932f2a57bcab6b712` against
+<https://vram-fieldtest.sociobot.in> completed on 2026-08-29 UTC.
 
-- The CLI no longer caps a complete run at 16,384 MiB. `run` now defaults to
-  90% of detected VRAM and covers that amount across bounded allocator
-  windows. `plan --detected-mib 98304 --coverage 90 --window-mib 16384`
-  returns 88,474 MiB (90.0004%) in six windows. The report records completed,
-  aggregate coverage rather than assuming a full card allocation.
-- Each pattern is divided into 64 MiB GPU chunks. Deadline checks occur before
-  each chunk, while waiting for read-back, and during CPU comparison. A time or
-  thermal stop writes an `incomplete` JSON and HTML report before returning an
-  error.
-- Reports now contain local thermal and core/memory clock samples. NVIDIA,
-  AMD, and Intel local providers are attempted (`nvidia-smi`, `rocm-smi`, and
-  Intel DRM sysfs); unavailable readings are recorded honestly.
-- `cargo clippy --locked -- -D warnings` is clean and is required by CI and the
-  release workflow.
-- The Report Kit browser client makes at most one background verification check
-  per 24 hours. It stores and honors an exposed `Retry-After` after HTTP 429,
-  makes no retry before that time, and states the behavior on Privacy and Terms.
-- Production HTML now references content-hashed `assets/app.*.js` and
-  `assets/styles.*.css`. The existing `/assets/*` immutable-cache route applies
-  to both, and the service worker is generated with those same hashes.
+The static site is deployed from this candidate and its quality gates pass, but
+the release must not ship:
 
-## Verification evidence
+1. **P0:** the live installer downloads GitHub release `v0.1.1`, an older CLI
+   which does not recognise the candidate's `plan` command and therefore cannot
+   deliver the 90%-of-96-GiB coverage protocol claimed by the current landing
+   page.
+2. **P1:** 20 direct invalid license-verification requests from one client all
+   returned HTTP 200; no documented server-side allowance, HTTP 429, or
+   `Retry-After` was observed.
+3. **P2:** live unknown routes return HTTP 200 rather than a real HTTP 404.
 
-Performed from a clean Node install on 2026-08-29 UTC:
+Publish installers built from the candidate, enforce and document a server-side
+unlock-request allowance, and fix the deployed 404 response before re-verifying.
+
+Detailed commands, evidence, passed claims, live asset hashes, browser checks,
+and the hardware limitation are in
+[`verification-2.md`](verification-2.md).
+
+## How to reproduce passing local checks
 
 ```sh
-npm ci && npm test && npm run build && cargo fmt --check \
-  && cargo clippy --locked -- -D warnings && cargo package --locked --allow-dirty
+npm ci
+npm test
+npm run build
+cargo fmt --check
+cargo clippy --locked -- -D warnings
+cargo package --locked --allow-dirty
 ```
 
-Result: `npm ci` installed 5 packages with zero vulnerabilities; 10 Node
-integration tests, 4 Rust unit tests, and 14 Playwright desktop/mobile tests
-passed. The browser suite includes axe on `/`, `/demo`, `/report-kit`,
-`/privacy`, `/terms`, and the 404 route; keyboard routing, 390 px layout,
-offline reload, request privacy, and no console-error release fallback passed.
-`cargo package` packaged and verified `vram-fieldtest-0.1.1`.
-
-Every command in `.factory/claims.json` is backed by a tagged sandbox test.
-New exact regressions cover a modeled 96 GiB adapter reaching 90% in six
-windows, content-hashed immutable assets, and a 429 response with
-`Retry-After` preventing a second license request.
-
-Local production-bundle smoke test using `/opt/fleet/lib/verify-url.sh`:
-
-```json
-{"loadMs":699,"errors":[],"a11y":{"title":"VRAM Field Test — Test GPU memory","lang":"en","h1":1,"main":true,"imgsMissingAlt":0,"buttonsUnlabeled":0,"textLength":2242}}
-```
-
-Built sizes: JavaScript 5,980 bytes gzip, CSS 2,431 bytes gzip, and hero WebP
-120,554 bytes. The output is `dist/site/`; release binary is
-`target/release/vram-fieldtest`.
-
-## Known hardware limit
-
-This worker has no usable GPU adapter, so it could not truthfully execute a
-physical 90%-of-96-GiB pass. The deterministic high-VRAM plan and report
-aggregation are covered in tests; run the documented 96 GiB command on the
-target hardware before claiming a hardware matrix result. The CLI still fails
-safely with its driver recovery message when no adapter is present.
-
-## Deployment
-
-The product remains a `cli-installers` artifact with the static site deployed
-from `dist/site`. `main` was pushed to `origin` at `688a09d`; GitHub Actions
-run `33250054592` for that SHA is in progress:
-<https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33250054592>.
-
-I attempted the configured Azure Static Web Apps deployment. The worker's
-managed identity was denied `Microsoft.Web/staticSites/read` on
-`/subscriptions/283af945-693b-4a6e-b952-df928d0a18a9/resourceGroups/sf-vram-fieldtest/providers/Microsoft.Web/staticSites/sf-vram-fieldtest`,
-so this worker cannot obtain the deployment configuration or upload a live
-bundle. The current live site still serves the prior bundle. The operator (or
-the linked deployment service) must deploy `dist/site` after CI completes,
-then verify `/assets/*` sends `Cache-Control: public, max-age=31536000,
-immutable` with the same URL smoke test.
+Run the bundled safe sample with `cargo run -- demo --json`. A real test needs
+an available GPU and explicit `--yes`; this verifier environment had no usable
+adapter.
