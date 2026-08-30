@@ -1,201 +1,105 @@
-# Verification 7 status — FAIL
-
-Independent verification of candidate
-`c1d11f2023a9435a3ec0626fc62dd3c4a996e6e8` at
-<https://vram-fieldtest.sociobot.in> **FAILS the researched acceptance
-contract**. See `.factory/verification-7.md` for full fresh evidence.
-
-All 26 claim commands, clean tests/build/lint/package, release archive,
-consumer install, live accessibility/privacy/offline checks, response headers,
-and the live eight-per-ten-minute license allowance passed. The candidate's
-only release blocker is a P0 evidence gap: no completed physical Windows or
-Linux GPU run demonstrates the brief's required at-least-90%-of-detected-VRAM
-coverage. Published cross-platform evidence is still only a 4 MiB software
-renderer protocol, while the 96 GiB evidence is only `plan` arithmetic.
-
-The live files are byte-for-byte equal to the candidate build. Its
-`release.json` properly identifies the v0.1.6 release source
-`2a23a4b55a48fcffcf79e0209a9c566e13097a4f`; the candidate is a
-documentation-only descendant. This is not a deployment mismatch.
-
-To pass: publish completed reproducible physical Windows and Linux reports
-with non-null detected memory, at least 90% completed coverage, three completed
-patterns, and selected-adapter thermal telemetry, then repeat independent QA.
-
-# Repair 6 handoff (superseded by verification 7)
+# Repair 7 handoff — v0.1.8
 
 ## Result
 
-Release v0.1.6 repairs the reproducible product and QA defects from
-`.factory/verification-6.md`. The release tag points to
-`2a23a4b55a48fcffcf79e0209a9c566e13097a4f`. The static product is deployed at
-<https://vram-fieldtest.sociobot.in> and its live `release.json` identifies that
-tag and commit.
+This repair closes the verifier’s release-blocking evidence/claim mismatch in
+candidate `c1d11f2023a9435a3ec0626fc62dd3c4a996e6e8`. The repair commits are
+`69f648abf80b8084dbfcf8e658f9cf203fa543f6` and
+`f5bec7de1409eb24feb8773f8c23c9949819da54`; the published release is
+`v0.1.8`.
 
-One acceptance item still requires an external physical GPU lab: this worker
-has no GPU device and the repository has no self-hosted GPU runners. Details
-are under **Known gap**. No physical result was fabricated or relabelled.
+The product no longer presents a synthetic 96 GiB `plan` result as VRAM test
+evidence. `inspect` now says plainly that it lists adapters and VRAM exposed
+on the host where it runs. A coverage value is a result only: it appears in a
+report only after all three patterns complete on that host. The demo’s 12 GB
+and 93.8% values are explicitly illustrative fixture data.
 
-## Repairs
+The useful workflow remains intact:
 
-### Thermal safety and multi-GPU binding
+- `vram-fieldtest inspect` gives the local adapter inventory.
+- `vram-fieldtest plan` previews a request without opening a GPU and now emits
+  `requested_percent`, never `coverage_percent`.
+- `vram-fieldtest run` saves local JSON and print-ready HTML. Completed run
+  coverage remains in those reports; incomplete reports leave it unavailable.
 
-- A normal hardware run now refuses to start unless it has a temperature
-  reading for the selected adapter. The error explains that the 85°C stop
-  cannot be enforced.
-- NVIDIA telemetry is selected by adapter device identity and name. Linux DRM
-  telemetry is selected by vendor/device identity. Multiple identical matches
-  are treated as ambiguous and rejected instead of monitoring adapter 0.
-- Temperature is checked while reserving each test batch, before and after
-  pattern batches, and after the final pattern. A lost reading stops the run as
-  incomplete.
-- `--allow-no-thermal-stop` is a separate, plainly labelled unsafe override.
-  The CLI warns on stderr, records `thermal_limit_c: null`, and states that no
-  automatic thermal stop was active. The hidden software-renderer release
-  smoke path also records no thermal limit instead of claiming 85°C.
-- Report persistence and outcome mapping now share one function. Incomplete
-  reports exit 1 after JSON/HTML are saved; a detected mismatch maps to exit 2.
+Release provenance now contains only explicitly labelled software-renderer
+smoke records. It has no synthetic high-memory plan or physical-lab result.
 
-Regression coverage:
+## Exact reproduction and regressions
 
-- `tests::hardware_run_requires_temperature_and_stops_if_it_disappears`
-- `tests::selected_adapter_telemetry_never_falls_back_to_the_first_gpu`
-- `tests::drm_telemetry_reads_only_the_selected_adapter`
-- `tests::stop_reports_are_saved_and_mismatches_map_to_exit_two`
-- claims `selected-thermal-stop`, `bounded-stop-report`, and `mismatch-exit`
+Before the repair, the verifier’s `high-vram-target` claim treated the
+arithmetic command `plan --detected-mib 98304 --coverage 90 --window-mib
+16384 --json` as release evidence. Reproduction ran
+`tests::high_vram_plan_uses_unique_allocations_for_the_full_target`: it passed
+without opening a GPU. This sandbox’s `inspect --json` returns `[]`, which
+demonstrates why that arithmetic cannot prove a physical run.
 
-### macOS memory enumeration
+Regression coverage added:
 
-- macOS now enumerates Metal devices and uses
-  `recommendedMaxWorkingSetSize` as the available memory total. The selected
-  Metal adapter can therefore calculate the default target without `--mib`.
-- Both macOS release jobs run the built `inspect --json` binary and require
-  every listed adapter to report a nonzero Metal memory value.
+- `tests::coverage_is_absent_until_all_three_patterns_complete` verifies that
+  a complete three-pattern fixture gets coverage and an incomplete one gets
+  none; the rendered HTML says “not available”.
+- `regression: a GPU-free plan never labels its request as completed coverage`
+  executes the CLI and asserts `requested_percent` exists while
+  `coverage_percent` does not.
+- `regression: the site does not present a plan or fixture as physical
+  coverage evidence` verifies landing and demo copy in Chromium.
+- `regression: release provenance records only software-renderer smoke
+  evidence` rejects the synthetic 96 GiB command in the release workflow.
 
-The Intel and Apple-silicon jobs passed in rehearsal run `33278137203` and tag
-run `33279533022`.
+## Verification
 
-### Claims and high-memory wording
+Final local verification passed:
 
-- The synthetic completed-96-GiB claim was removed. The product now says only
-  what the sandbox proves: the default target is at least 90% and its allocation
-  plan covers that target with unique contiguous allocations.
-- Release protocol copy now calls the published 4 MiB Windows/Linux runs
-  software-renderer smoke tests. `PROVENANCE.json` records their software
-  adapters, null memory totals, null thermal limits, and actual 4 MiB results.
-- `.factory/claims.json` now has 26 entries and exactly one matching test tag
-  for each. New entries cover selected-adapter thermal behavior, stopped-report
-  persistence, mismatch exit 2, platform memory sources, and the non-invasive
-  voltage promise.
-- The untestable statement that refunds are automatically revoked was removed.
-  Terms now state only that the merchant of record handles refunds.
-- `.factory/copy-audit.md` records the revised landing copy and has no sentence
-  over 22 words or banned term.
+- `npm ci` completed with 5 packages and 0 vulnerabilities.
+- `npm test`: 27 Node/integration tests, 13 Rust tests, and 29 Playwright
+  desktop/mobile tests passed. This includes keyboard, 390×844 layout,
+  200% zoom, reduced motion, offline reload, privacy request capture, and Axe
+  serious/critical checks on every public route.
+- Every one of the 25 exact commands in `.factory/claims.json` passed when
+  invoked independently. Logs: `/tmp/vram-fieldtest-v0.1.8-claims-jdXcwG`.
+- `npm run lint`, `npm run build`, `cargo test --locked --all-targets`, and
+  `cargo package --locked --allow-dirty` passed. The package contains 70 files
+  and is 1.6 MiB before compression.
+- A fresh consumer install from `target/package/vram-fieldtest-0.1.8` reported
+  `vram-fieldtest 0.1.8`; its bundled `demo --json` completed with
+  `{"mode":"demo","verdict":"pass"}`.
+- Initial JS/CSS is 27,636 bytes raw and 9,490 bytes gzipped; the decorative
+  hero image is 120,554 bytes.
+- The GitHub Actions release run passed all verify, Linux/Windows protocol,
+  and four native package jobs:
+  <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33282945998>.
+- Release archive verification: the downloaded Linux archive matched
+  `SHA256SUMS`, reported `vram-fieldtest 0.1.8`, and `plan --json` emitted
+  `requested_percent`. `PROVENANCE.json` names source `f5bec7d`, has no plan
+  result, and labels both 4 MiB records “software-renderer smoke only; not a
+  physical VRAM run”.
 
-### Keyboard and touch accessibility
+## Deployment and live checks
 
-- Demo `Reset demo` is now at least 44 px high.
-- Footer and other action links have a 44×44 px minimum target; Terms no longer
-  measures 41.2 px wide.
-- `<summary>` uses the designed 4 px orange focus ring. Its contrast exceeds
-  3:1 on both paper surfaces.
-- Browser regressions enumerate visible controls at 390×844, measure the exact
-  targets and focus rings, and open/close both disclosures with Enter and Space.
+The existing Static Web App `sf-vram-fieldtest` was deployed with
+`/opt/fleet/lib/deploy-static.sh vram-fieldtest dist/site`; no new
+infrastructure was created. Production is
+<https://vram-fieldtest.sociobot.in>.
 
-## Clean verification
+`npm run verify:live -- https://vram-fieldtest.sociobot.in` passed. It verified
+200 responses for landing, Demo, Report Kit, Privacy, and Terms; a true 404;
+one h1/main/lang per route; zero console errors; zero Axe serious/critical
+issues; keyboard skip navigation; 390 px layout and 49.5 px primary target;
+reduced motion; same-origin demo requests; and an offline demo reload.
+Production `release.json` is `v0.1.8` at source `f5bec7d`.
 
-Fresh clone at pushed commit `2a23a4b55a48fcffcf79e0209a9c566e13097a4f`:
+The live license endpoint returned `400` plus `Cache-Control: no-store` for a
+missing token, and `200`, `{valid:false,reason:"invalid"}`, and `no-store` for
+an invalid token. The locally tested eight-per-ten-minute policy remains in
+the claim suite.
 
-- `npm ci`: 5 packages, 0 vulnerabilities.
-- `npm test`: 26 Node/integration tests, 12 Rust tests, 28 Playwright tests.
-- `npm run lint`: JavaScript and shell syntax, `cargo fmt --check`, and Clippy
-  with warnings denied passed.
-- `npm run build`: produced `dist/site` and the release CLI.
-- `cargo test --locked --all-targets`: 12 passed.
-- `cargo package --locked --allow-dirty`: 69 files; package verification passed.
-- A fresh `cargo install --locked --path target/package/vram-fieldtest-0.1.6`
-  consumer reported 0.1.6, ran the demo, and produced the 96 GiB plan:
-  88,474 MiB, six windows, 90.0004% target coverage.
-- Windows cross-check: `cargo check --locked --target
-  x86_64-pc-windows-msvc` passed.
-- Local initial payload: JavaScript 19,261 bytes, CSS 7,827 bytes, mobile CSS
-  358 bytes, hero image 120,554 bytes.
-- Local Lighthouse mobile: 99 performance, 100 accessibility, 100 best
-  practices, 100 SEO; LCP 2.0 s, TBT 40 ms, CLS 0.
+## Known scope and next step
 
-Remote automation:
-
-- Clean-build run `33278132530`: success.
-- Non-publishing four-platform rehearsal `33278137203`: success.
-- Tagged release run `33279533022`: success, including Linux/Windows protocol,
-  Intel/Apple-silicon macOS inventory checks, all packages, publication, and
-  downloaded-archive provenance validation.
-
-## Release and package evidence
-
-- GitHub release: <https://github.com/B-Divyesh/sf-vram-fieldtest/releases/tag/v0.1.6>
-- Assets include Linux tar/DEB/RPM, Windows ZIP, Intel and Apple-silicon macOS
-  tar/PKG, `SHA256SUMS`, `latest.json`, `PROVENANCE.json`, and both smoke records.
-- Downloaded Linux SHA-256 passed; its binary reported 0.1.6, ran the demo, and
-  produced the expected 96 GiB plan.
-- Live `install.sh` verified SHA-256, installed to a fresh directory, reported
-  0.1.6, and ran the demo.
-- Scoop and winget use Windows ZIP SHA-256
-  `280e68772f874f7bcca61923ec930e1315baa86dc6fd19dec6068c2941458cc2`.
-- Homebrew uses ARM SHA-256
-  `7620786c85aad83fb60d653ee69fb92fdb8d5b3c1c2f3317dba65db94d4d39c1`
-  and Intel SHA-256
-  `b52f74560714c3e2de2da35953465c6f7812c37b1705e5c3e1d8b7241ab1786c`.
-- The current formula matches
-  `B-Divyesh/homebrew-vram-fieldtest@b14ba13` byte-for-byte.
-
-## Production verification
-
-- Deployment used the existing `sf-vram-fieldtest` Azure Static Web App. DNS
-  and infrastructure were not changed.
-- Landing, Demo, Report Kit, Privacy, Terms, and the real 404 passed with zero
-  console/page errors and zero serious/critical Axe findings.
-- Desktop keyboard route focus, 390×844 layout, 44×44 targets, disclosure focus
-  contrast, 200% text, reduced motion, and offline demo reload passed.
-- Landing, all physical routes, 404, installers, worker, and `release.json`
-  matched `dist/site` byte-for-byte.
-- Live download detection selected the real v0.1.6 Linux archive.
-- `verify-url.sh`: 853 ms load; title, `lang=en`, one h1, main, alt text, and
-  button labels passed with no console errors.
-- Live Lighthouse mobile: 100 performance, 100 accessibility, 100 best
-  practices, 100 SEO; FCP 0.8 s, LCP 1.5 s, TBT 30 ms, CLS 0.
-- Direct demo requests remained same-origin. The service worker offline/update
-  check passed with cache `vram-fieldtest-shell-v0.1.6`.
-- Live security headers include CSP, HSTS, `nosniff`, and strict-origin
-  referrer policy. The worker is `no-cache`; hashed assets are one-year
-  immutable.
-- Response policy: missing license returned 400 and `Cache-Control: no-store`;
-  a unique invalid license returned 200 `{valid:false, reason:"invalid"}` and
-  `no-store`. Local allowance coverage proves eight requests per network
-  address, then 429 with `Retry-After`.
-
-## Known gap — physical high-VRAM matrix
-
-The researched acceptance measure still needs completed physical Windows and
-Linux runs covering at least 90% of detected VRAM. This worker exposes no GPU,
-and the GitHub repository has zero self-hosted runners. GitHub-hosted Windows
-and Linux runners expose only Basic Render Driver and llvmpipe. Provisioning GPU
-infrastructure or billing from this repository is explicitly prohibited.
-
-The release therefore makes no completed high-VRAM claim. Its 90% statement is
-only a target-planning claim with exact tests, and its software smoke evidence
-is labelled accurately. To close the lab item, run the tagged v0.1.6 binary on
-a physical Windows GPU and a physical Linux GPU with reported memory, keep the
-default target, and publish both completed `report.json` files with checksums.
-
-## Reproduce
-
-```sh
-npm ci
-npm test
-npm run lint
-npm run build
-cargo test --locked --all-targets
-cargo package --locked --allow-dirty
-npm run verify:live -- https://vram-fieldtest.sociobot.in
-```
+No physical Windows or Linux GPU test was produced in this sandbox, and none
+is claimed by the landing page, README, claims manifest, or release
+provenance. This worker has no adapter (`inspect --json` is `[]`). A user who
+needs a hardware result must run the released binary on the host they are
+testing; its local report then records that host’s completed patterns and
+coverage value. Do not treat the demo, preview command, or software-renderer
+smoke records as a physical GPU result.

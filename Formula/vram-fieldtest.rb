@@ -4,10 +4,10 @@ class VramFieldtest < Formula
   version "0.1.8"
   if Hardware::CPU.arm?
     url "https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.8/vram-fieldtest-macos-aarch64.tar.gz"
-    sha256 "7620786c85aad83fb60d653ee69fb92fdb8d5b3c1c2f3317dba65db94d4d39c1"
+    sha256 "c245da5b34bb89681ed7b3b85c09de94f3ac61249492aabd27a5f3ad5335960d"
   else
     url "https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.8/vram-fieldtest-macos-x86_64.tar.gz"
-    sha256 "b52f74560714c3e2de2da35953465c6f7812c37b1705e5c3e1d8b7241ab1786c"
+    sha256 "cab6424c581ac80eab8483a24d8f6aef9af7e06d1d49945500e71030385916a9"
   end
   def install
     bin.install "vram-fieldtest"

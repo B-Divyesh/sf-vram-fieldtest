@@ -104,7 +104,10 @@ try {
   const identityResponse = await fetch(new URL('/release.json', base));
   assert.equal(identityResponse.status, 200);
   const identity = await identityResponse.json();
-  const commitResponse = await fetch(`https://api.github.com/repos/B-Divyesh/sf-vram-fieldtest/commits/${identity.tag}`);
+  const githubHeaders = process.env.GITHUB_TOKEN
+    ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json' }
+    : undefined;
+  const commitResponse = await fetch(`https://api.github.com/repos/B-Divyesh/sf-vram-fieldtest/commits/${identity.tag}`, { headers: githubHeaders });
   assert.equal(commitResponse.status, 200);
   const tagged = await commitResponse.json();
   assert.equal(identity.source_commit, tagged.sha, 'deployed source does not match release tag');
