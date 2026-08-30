@@ -32,4 +32,13 @@ jobs:
         with:
           node-version: 22
       - name: Exercise the PowerShell checksum guard with a good and tampered archive
-        run: 'node --test --test-name-pattern "^regression: Windows PowerShell installer copies only a checksum-matching archive$" site/tests/claims.test.mjs'
+        shell: pwsh
+        run: |
+          $output = & node --test --test-name-pattern '^regression: Windows PowerShell installer copies only a checksum-matching archive$' site/tests/claims.test.mjs 2>&1
+          $exitCode = $LASTEXITCODE
+          $output | ForEach-Object { Write-Host $_ }
+          if ($exitCode -ne 0) {
+            $detail = (($output | Out-String).Trim() -replace "`r?`n", '%0A')
+            Write-Error "::error title=PowerShell installer regression::$detail"
+            exit $exitCode
+          }
