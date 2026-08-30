@@ -32,4 +32,4 @@ jobs:
         with:
           node-version: 22
       - name: Exercise the PowerShell checksum guard with a good and tampered archive
-        run: node --test --test-name-pattern "^regression: Windows PowerShell installer copies only a checksum-matching archive$" site/tests/claims.test.mjs
+        run: 'node --test --test-name-pattern "^regression: Windows PowerShell installer copies only a checksum-matching archive$" site/tests/claims.test.mjs'
