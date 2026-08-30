@@ -9,6 +9,6 @@ InstallerType: zip
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.9/vram-fieldtest-windows-x86_64.zip
-    InstallerSha256: A7BC0E8FAA9F6C967CCA09BF9E7A25054735CD0AC72E58DB140F25816C90442D
+    InstallerSha256: 258284CA5C754EF901FD061D6AAAF99D517662A5C5A62BB0CB28B070451DC8DD
 ManifestType: installer
 ManifestVersion: 1.6.0
