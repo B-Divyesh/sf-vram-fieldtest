@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.7 — 2026-08-29
+
+- Make `inspect` explicitly host-local: it reports only the adapters and VRAM values exposed where the command runs.
+- Report coverage only after all three patterns complete in the saved run; incomplete reports leave coverage unavailable.
+- Remove synthetic high-memory plans from release provenance and label release protocol records as software-renderer smoke evidence.
+
 ## 0.1.6 — 2026-08-29
 
 - Refuse hardware stress without temperature data for the selected adapter.
@@ -16,10 +22,10 @@
 ## 0.1.4 — 2026-08-29
 
 - Retain distinct GPU allocations through all three memory checks and report only commonly completed memory.
-- Enumerate selectable adapters and read memory totals through Windows DXGI, Linux DRM, or `nvidia-smi`.
+- Enumerate selectable adapters and the memory values their local drivers expose.
 - Stop automatic tests when a memory total is unavailable instead of substituting a small default.
 - Isolate demo license storage, improve report-file recovery, and restore 44 px download targets.
-- Publish Windows and Linux retained-allocation protocol evidence with each release.
+- Add software-renderer retained-allocation smoke records to the release workflow.
 
 ## 0.1.3 — 2026-08-29
 
@@ -29,7 +35,7 @@
 
 ## 0.1.2 — 2026-08-29
 
-- Publish high-VRAM planning and windowed coverage in every platform installer.
+- Add local request planning and windowed report fields to the CLI.
 - Reject stale release metadata before offering a download.
 - Enforce a server-side license-check allowance with 429 and `Retry-After`.
 - Return a real HTTP 404 for unknown routes while keeping every public route reloadable.

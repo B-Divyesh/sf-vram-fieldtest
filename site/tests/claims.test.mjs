@@ -99,20 +99,20 @@ test('regression: automatic coverage cannot silently fall back to a small fixed 
   assert.match(source, /Run `vram-fieldtest inspect`, confirm the card's memory, then pass `--mib <amount>`/);
 });
 
-test('@claim:adapter-memory-sources adapter inventory uses each platform memory source', () => {
-  const source = readFileSync('src/main.rs', 'utf8');
-  assert.match(source, /enumerate_adapters\(wgpu::Backends::PRIMARY\)/);
-  assert.match(source, /Windows DXGI DedicatedVideoMemory/);
-  assert.match(source, /Linux DRM .* mem_info_vram_total/);
-  assert.match(source, /nvidia-smi reported memory\.total/);
-  assert.match(source, /Metal recommendedMaxWorkingSetSize/);
-  assert.match(source, /Adapter index shown by `vram-fieldtest inspect`/);
-  const output = execFileSync('cargo', ['test', '--quiet', 'tests::linux_inventory_reads_each_drm_adapter_total', '--', '--exact'], { encoding: 'utf8' });
-  assert.match(output, /1 passed/);
+test('@claim:host-vram-inspection inspect returns the adapters and memory values visible on this host', () => {
+  const inventory = JSON.parse(execFileSync('cargo', ['run', '--quiet', '--', 'inspect', '--json'], { encoding: 'utf8' }));
+  assert.ok(Array.isArray(inventory));
+  for (const adapter of inventory) {
+    assert.equal(typeof adapter.index, 'number');
+    assert.equal(typeof adapter.name, 'string');
+    assert.ok(Object.hasOwn(adapter, 'detected_vram_mib'));
+  }
+  const text = execFileSync('target/debug/vram-fieldtest', ['inspect'], { encoding: 'utf8' });
+  assert.match(text, /No GPU adapter is available|\[\d+\] .+ \(WebGPU /);
 });
 
-test('@claim:high-vram-target default plan targets at least 90 percent with distinct allocations', () => {
-  const output = execFileSync('cargo', ['test', '--quiet', 'tests::high_vram_plan_uses_unique_allocations_for_the_full_target', '--', '--exact'], { encoding: 'utf8' });
+test('@claim:completed-run-coverage coverage is withheld until all three patterns complete', () => {
+  const output = execFileSync('cargo', ['test', '--quiet', 'tests::coverage_is_absent_until_all_three_patterns_complete', '--', '--exact'], { encoding: 'utf8' });
   assert.match(output, /1 passed/);
 });
 
@@ -145,12 +145,12 @@ test('@claim:installer-checksum shell installer downloads, verifies, and install
   const sourceCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const server = createServer((req, res) => {
     const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.6', assets: [
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.7', assets: [
       { browser_download_url: `${base}/vram-fieldtest-linux-x86_64.tar.gz` },
       { browser_download_url: `${base}/SHA256SUMS` },
       { browser_download_url: `${base}/PROVENANCE.json` }
     ] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.6', source_commit: sourceCommit }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.7', source_commit: sourceCommit }, null, 2));
     // GitHub may return minified JSON; the installer must not depend on a line
     // beginning with the top-level sha field.
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: sourceCommit, commit: { tree: { sha: 'b'.repeat(40) } } }));
@@ -197,7 +197,7 @@ test('installer refuses a stale release instead of installing the wrong CLI', as
       child.on('exit', status => resolve({ status, stderr }));
     });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Downloads for v0\.1\.6 are not published yet/);
+    assert.match(result.stderr, /Downloads for v0\.1\.7 are not published yet/);
     assert.equal(existsSync(join(dir, 'vram-fieldtest')), false);
   } finally {
     server.close();
@@ -208,8 +208,8 @@ test('installer refuses a stale release instead of installing the wrong CLI', as
 test('regression: installer refuses the expected tag when it points at an ancestor commit', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vram-ancestor-installer-'));
   const server = createServer((req, res) => {
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.6', assets: [] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.6', source_commit: 'a'.repeat(40) }, null, 2));
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.7', assets: [] }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.7', source_commit: 'a'.repeat(40) }, null, 2));
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: 'b'.repeat(40) }, null, 2));
     res.writeHead(404).end();
   });
@@ -268,22 +268,21 @@ test('release workflow covers the required native assets', () => {
   assert.doesNotMatch(workflow, /macos-13/);
 });
 
-test('@claim:release-provenance release gates the staged and published candidate plan command', () => {
+test('regression: release provenance records only software-renderer smoke evidence', () => {
   const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
-  const exactPlan = 'plan --detected-mib 98304 --coverage 90 --window-mib 16384 --json';
-  assert.equal(workflow.split(exactPlan).length - 1, 3);
   assert.match(workflow, /PROVENANCE\.json/);
   assert.match(workflow, /tr -d '\\r'/);
   assert.match(workflow, /\.source_commit == \$commit/);
   assert.match(workflow, /github\.event_name == 'push' && github\.ref_type == 'tag'/);
   assert.match(workflow, /test "\$\(git rev-parse HEAD\)" = "\$GITHUB_SHA"/);
   assert.match(workflow, /sha256sum -c -/);
-  assert.match(workflow, /\.requested_mib == 88474 and \.coverage_percent >= 90 and \.windows == 6/);
   assert.match(workflow, /latest\.json/);
   assert.match(workflow, /os: ubuntu-latest[\s\S]*os: windows-latest/);
   assert.match(workflow, /run --yes --allow-software --adapter 0 --mib 4/);
   assert.match(workflow, /protocol_runs/);
+  assert.match(workflow, /software-renderer smoke only/);
   assert.match(workflow, /\.residency\.retained_through_patterns == true/);
+  assert.doesNotMatch(workflow, /detected-mib 98304|88474|coverage_percent >= 90/);
 });
 
 test('regression: native archive packaging is byte reproducible', () => {

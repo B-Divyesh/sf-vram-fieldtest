@@ -51,17 +51,13 @@ The winget manifest is ready under `winget/` for owner submission.
 
 ## Run a test
 
-Inspect the card and memory your driver reports:
+Inspect the adapters and VRAM exposed on the host where you run the tool:
 
 ```sh
 vram-fieldtest inspect
 ```
 
-`inspect` lists every available adapter with an index. Windows totals come from DXGI.
-
-Linux uses the driver memory total or `nvidia-smi`.
-
-macOS uses Metal's recommended working-set size for each available device.
+`inspect` lists each adapter visible to that host with an index. It shows any memory value the local driver exposes. It does not use a remote lab or invent a value.
 
 Run only with working cooling and a clear view of the machine:
 
@@ -69,35 +65,34 @@ Run only with working cooling and a clear view of the machine:
 vram-fieldtest run --yes --adapter 0 --output ./gpu-record
 ```
 
-`--yes` confirms that you want to start a compute memory test. By default, the tool targets 90% of reported memory in test batches.
+`--yes` confirms that you want to start a compute memory test. If you omit `--mib`, the tool derives a request from VRAM reported on that host.
 
-A hardware run starts only when it can read the selected card's temperature. It stops at 85°C or when that reading disappears.
+The CLI starts only when it can read the selected card's temperature. It stops at 85°C or when that reading disappears.
 
 `--allow-no-thermal-stop` is an unsafe override. It disables the automatic thermal stop and requires manual monitoring.
 
-The test keeps every counted allocation live until all three patterns finish. The driver cannot recycle one small allocation as claimed coverage.
+The report counts only allocations retained by the run through completed patterns.
 
 If the driver does not report a total, the test stops with an instruction. It never substitutes a small default. After checking the card, use `--mib` to set an explicit amount.
 
 Use `--adapter` to choose a listed card. Use `--window-mib` to set the largest monitored batch, up to 16,384 MiB.
 
-The report records completed memory, retained allocation evidence, each check, and selected-card temperature readings.
+The report records memory tested, retained allocation evidence, each check, and selected-card temperature readings. A coverage value appears only after all three patterns complete in your own run on that host.
 
 A time or thermal stop saves an incomplete report before exit.
 
 A failed memory check exits with code 2. Use `--json` for a machine-readable final summary.
 
-Plan a high-memory test without opening the GPU:
+Preview a requested amount without opening the GPU:
 
 ```sh
-vram-fieldtest plan --detected-mib 98304 --coverage 90 --window-mib 16384 --json
+vram-fieldtest plan --detected-mib 12288 --coverage 90 --window-mib 1024 --json
 ```
 
-The tool runs three memory checks. Technical names and definitions are available in the site’s Technical details section.
+This command is a preview only. It does not allocate GPU memory or create a coverage result. The tool runs three memory checks. Technical names and definitions are in the site’s Technical details section.
 
 The CLI makes no network request. It writes reports only to the folder you select.
 
-Release checks run a 4 MiB software-renderer smoke test on Windows and Linux. Their JSON records ship with each GitHub release.
 
 ## Develop and verify
 

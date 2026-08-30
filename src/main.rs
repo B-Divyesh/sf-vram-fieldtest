@@ -27,7 +27,7 @@ struct Cli {
 enum Cmd {
     /// Run a real field test. Requires --yes because it can load the GPU.
     Run(RunArgs),
-    /// Show the coverage plan without opening a GPU. Useful for high-VRAM planning.
+    /// Preview a requested memory amount without opening a GPU.
     Plan(PlanArgs),
     /// Write the bundled sample report to a temporary directory.
     Demo {
@@ -55,10 +55,10 @@ struct RunArgs {
     allow_no_thermal_stop: bool,
     #[arg(long, default_value = "./vram-fieldtest-report")]
     output: PathBuf,
-    /// Total MiB to cover across windows. Defaults to 90% of detected VRAM.
+    /// Total MiB to test across windows. If omitted, derive a request from VRAM reported on this host.
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..=1_048_576))]
     mib: Option<u64>,
-    /// Percent of detected VRAM to cover when --mib is not supplied.
+    /// Percent of host-reported VRAM to request when --mib is not supplied.
     #[arg(long, default_value_t = DEFAULT_COVERAGE, value_parser = clap::value_parser!(u8).range(1..=100))]
     coverage: u8,
     /// Largest monitored test batch in MiB. Distinct allocations stay live across batches.
@@ -72,7 +72,7 @@ struct RunArgs {
 }
 #[derive(Args)]
 struct PlanArgs {
-    /// Detected VRAM to model in MiB, for example 98304 for a 96 GiB card.
+    /// Host-reported VRAM value to model in MiB when previewing a request.
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..=1_048_576))]
     detected_mib: u64,
     #[arg(long, default_value_t = DEFAULT_COVERAGE, value_parser = clap::value_parser!(u8).range(1..=100))]
@@ -301,6 +301,24 @@ fn completed_tested_mib(patterns: &[Pattern]) -> u64 {
     }
 }
 
+/// A coverage percentage is a result, not a request. It is meaningful only
+/// after all three patterns finished successfully in the report being saved.
+fn completed_run_coverage(
+    detected_vram_mib: Option<u64>,
+    patterns: &[Pattern],
+    status: &str,
+) -> Option<f64> {
+    if status != "pass"
+        || patterns.len() != 3
+        || patterns.iter().any(|pattern| pattern.status != "pass")
+    {
+        return None;
+    }
+    let tested_mib = completed_tested_mib(patterns);
+    (tested_mib > 0).then_some(())?;
+    detected_vram_mib.map(|detected| (tested_mib as f64 / detected as f64 * 100.0).min(100.0))
+}
+
 fn run(args: RunArgs) -> Result<()> {
     if !args.yes {
         bail!("Not started: pass --yes after you have a clear view of the GPU and its cooling.");
@@ -386,9 +404,6 @@ fn run(args: RunArgs) -> Result<()> {
         ));
     }
     let tested_mib = completed_tested_mib(&patterns);
-    let coverage = adapter
-        .detected_vram_mib
-        .map(|v| (tested_mib as f64 / v as f64 * 100.0).min(100.0));
     let bad: u64 = patterns.iter().map(|p| p.mismatches).sum();
     let final_sample = telemetry_sample(clock.elapsed().as_millis(), "after run", &adapter);
     if stop_reason.is_none() {
@@ -404,6 +419,7 @@ fn run(args: RunArgs) -> Result<()> {
     } else {
         "pass"
     };
+    let coverage = completed_run_coverage(adapter.detected_vram_mib, &patterns, status);
     let summary = match status {
         "pass" => format!(
             "No mismatches in {tested_mib} MiB across {} patterns and {} retained allocation(s).",
@@ -417,7 +433,13 @@ fn run(args: RunArgs) -> Result<()> {
         ),
         _ => format!("{bad} mismatches found. Do not rely on this GPU until it is retested."),
     };
-    let mut notes = vec!["The tool retains no telemetry and writes only the requested local report.".into(), "Counted coverage includes only distinct GPU allocations kept live until every completed memory pattern ended.".into(), "Each allocation is at most 64 MiB so duration and thermal guards can stop between GPU submissions and during CPU verification.".into(), "A pass is evidence for this bounded pattern run. It does not certify every GPU fault.".into()];
+    let mut notes = vec!["The tool retains no telemetry and writes only the requested local report.".into(), "A coverage value is calculated only from all three completed patterns in this report on this host.".into(), "Each allocation is at most 64 MiB so duration and thermal guards can stop between GPU submissions and during CPU verification.".into(), "A pass is evidence for this bounded pattern run. It does not certify every GPU fault.".into()];
+    if coverage.is_none() {
+        notes.push(
+            "No coverage value is reported because this run did not complete all three patterns."
+                .into(),
+        );
+    }
     if thermal_limit.is_none() {
         notes.push("No automatic thermal stop was active. This run used an explicit unsafe override or a software adapter.".into());
     }
@@ -436,7 +458,7 @@ fn run(args: RunArgs) -> Result<()> {
             tested_mib,
             detected_vram_mib: adapter.detected_vram_mib,
             coverage_percent: coverage,
-            coverage_target_percent: adapter.detected_vram_mib.map(|_| args.coverage),
+            coverage_target_percent: coverage.map(|_| args.coverage),
             window_mib: args.window_mib,
             chunk_mib,
             resident_mib: residency.bytes / MIB,
@@ -1425,7 +1447,7 @@ fn render_html(r: &Report) -> String {
         format!("<table><thead><tr><th>Phase</th><th>Temperature</th><th>Core clock</th><th>Memory clock</th></tr></thead><tbody>{}</tbody></table>", r.telemetry.samples.iter().map(|sample| format!("<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>", esc(&sample.phase), units(sample.temperature_c, "°C"), units(sample.core_clock_mhz, "MHz"), units(sample.memory_clock_mhz, "MHz"))).collect::<String>())
     };
     format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VRAM Field Test report</title><style>body{{font-family:system-ui;max-width:760px;margin:40px auto;padding:0 20px;color:#181714}}h1{{font-family:monospace}}.pass{{color:#176a44}}.fail{{color:#9c251d}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #777;padding:9px;text-align:left}}.stamp{{border:3px solid;padding:8px;display:inline-block;font-weight:bold}}</style></head><body><main><p>VRAM FIELD TEST / local evidence report</p><h1>Memory pattern report</h1><p class="stamp {status}">{status}</p><p>{summary}</p><h2>Coverage</h2><p>Tested {tested} MiB. Detected VRAM: {detected}. Usable coverage: {coverage}.</p><p>Resident memory: {resident} MiB in {allocation_count} distinct allocation(s). Retained through pattern checks: {retained}.</p><h2>Patterns</h2><table><thead><tr><th>Pattern</th><th>Bytes</th><th>Mismatches</th><th>Windows</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table><h2>Thermals and clocks</h2><p>Provider: {provider}. {telemetry_note}</p>{telemetry_rows}<h2>Limits</h2><p>Thermal stop: {thermal}. Total duration limit: {seconds}s. Each GPU chunk is at most {chunk} MiB.</p><h2>Read before using this report</h2><p>{notes}</p></main></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VRAM Field Test report</title><style>body{{font-family:system-ui;max-width:760px;margin:40px auto;padding:0 20px;color:#181714}}h1{{font-family:monospace}}.pass{{color:#176a44}}.fail{{color:#9c251d}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #777;padding:9px;text-align:left}}.stamp{{border:3px solid;padding:8px;display:inline-block;font-weight:bold}}</style></head><body><main><p>VRAM FIELD TEST / local evidence report</p><h1>Memory pattern report</h1><p class="stamp {status}">{status}</p><p>{summary}</p><h2>Coverage from this completed run</h2><p>Tested {tested} MiB. Detected VRAM on this host: {detected}. Coverage from this run: {coverage}.</p><p>Resident memory: {resident} MiB in {allocation_count} distinct allocation(s). Retained through pattern checks: {retained}.</p><h2>Patterns</h2><table><thead><tr><th>Pattern</th><th>Bytes</th><th>Mismatches</th><th>Windows</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table><h2>Thermals and clocks</h2><p>Provider: {provider}. {telemetry_note}</p>{telemetry_rows}<h2>Limits</h2><p>Thermal stop: {thermal}. Total duration limit: {seconds}s. Each GPU chunk is at most {chunk} MiB.</p><h2>Read before using this report</h2><p>{notes}</p></main></body></html>"#,
         status = esc(&r.verdict.status),
         summary = esc(&r.verdict.summary),
         tested = r.limits.tested_mib,
@@ -1474,20 +1496,20 @@ fn esc(s: &str) -> String {
 mod tests {
     use super::*;
     #[test]
-    fn high_vram_plan_reaches_ninety_percent_in_windows() {
+    fn plan_calculates_the_requested_amount_in_windows() {
         let plan = coverage_plan(98_304, None, 90, 16_384);
         assert_eq!(plan.requested_mib, 88_474);
         assert!(plan.coverage_percent >= 90.0);
         assert_eq!(plan.windows, 6);
     }
     #[test]
-    fn explicit_high_vram_target_is_not_capped_at_one_window() {
+    fn explicit_plan_request_is_not_capped_at_one_window() {
         let plan = coverage_plan(98_304, Some(88_474), 90, 1_024);
         assert_eq!(plan.windows, 87);
         assert_eq!(plan.requested_mib, 88_474);
     }
     #[test]
-    fn high_vram_plan_uses_unique_allocations_for_the_full_target() {
+    fn plan_uses_unique_allocations_for_the_requested_amount() {
         let plan = coverage_plan(98_304, None, 90, 16_384);
         let allocations =
             allocation_specs(plan.requested_mib * MIB, MAX_CHUNK_MIB * MIB, 16_384 * MIB);
@@ -1666,12 +1688,39 @@ mod tests {
         assert!(reading.provider.contains("card1"));
     }
     #[test]
-    fn html_includes_coverage_and_telemetry() {
+    fn html_includes_completed_run_coverage_and_telemetry() {
         let r: Report =
             serde_json::from_str(include_str!("../examples/sample-report.json")).unwrap();
         let html = render_html(&r);
-        assert!(html.contains("Coverage"));
+        assert!(html.contains("Coverage from this completed run"));
         assert!(html.contains("Thermals and clocks"));
+    }
+    #[test]
+    fn coverage_is_absent_until_all_three_patterns_complete() {
+        let mut report: Report =
+            serde_json::from_str(include_str!("../examples/sample-report.json")).unwrap();
+        assert_eq!(
+            completed_run_coverage(
+                report.adapter.detected_vram_mib,
+                &report.patterns,
+                &report.verdict.status,
+            ),
+            Some(93.75)
+        );
+
+        report.patterns.truncate(2);
+        report.verdict.status = "incomplete".into();
+        assert_eq!(
+            completed_run_coverage(
+                report.adapter.detected_vram_mib,
+                &report.patterns,
+                &report.verdict.status,
+            ),
+            None
+        );
+        report.limits.coverage_percent = None;
+        let html = render_html(&report);
+        assert!(html.contains("Coverage from this run: not available."));
     }
     #[test]
     fn write_report_uses_the_requested_local_directory() {
