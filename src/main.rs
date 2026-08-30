@@ -178,7 +178,7 @@ struct Verdict {
 struct CoveragePlan {
     detected_mib: u64,
     requested_mib: u64,
-    coverage_percent: f64,
+    requested_percent: f64,
     window_mib: u64,
     windows: u64,
 }
@@ -223,8 +223,8 @@ fn print_plan(args: PlanArgs) {
         );
     } else {
         println!(
-            "{} MiB across {} windows: {:.1}% of {} MiB",
-            plan.requested_mib, plan.windows, plan.coverage_percent, plan.detected_mib
+            "{} MiB across {} windows: {:.1}% requested from {} MiB",
+            plan.requested_mib, plan.windows, plan.requested_percent, plan.detected_mib
         );
     }
 }
@@ -262,7 +262,7 @@ fn coverage_plan(
     CoveragePlan {
         detected_mib,
         requested_mib,
-        coverage_percent: requested_mib as f64 / detected_mib as f64 * 100.0,
+        requested_percent: requested_mib as f64 / detected_mib as f64 * 100.0,
         window_mib,
         windows: requested_mib.div_ceil(window_mib),
     }
@@ -1499,7 +1499,7 @@ mod tests {
     fn plan_calculates_the_requested_amount_in_windows() {
         let plan = coverage_plan(98_304, None, 90, 16_384);
         assert_eq!(plan.requested_mib, 88_474);
-        assert!(plan.coverage_percent >= 90.0);
+        assert!(plan.requested_percent >= 90.0);
         assert_eq!(plan.windows, 6);
     }
     #[test]

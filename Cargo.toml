@@ -1,6 +1,6 @@
 [package]
 name = "vram-fieldtest"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 description = "A bounded, repeatable GPU memory field test"
 license = "MIT"

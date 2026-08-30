@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.8 — 2026-08-30
+
+- Rename preview output from `coverage_percent` to `requested_percent` so only completed reports carry a coverage value.
+
 ## 0.1.7 — 2026-08-29
 
 - Make `inspect` explicitly host-local: it reports only the adapters and VRAM values exposed where the command runs.

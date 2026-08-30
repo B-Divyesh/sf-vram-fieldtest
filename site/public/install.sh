@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 repo="B-Divyesh/sf-vram-fieldtest"
-expected="v0.1.7"
+expected="v0.1.8"
 api="${VRAM_FIELDTEST_RELEASE_API:-https://api.github.com/repos/$repo/releases/latest}"
 identity_api="${VRAM_FIELDTEST_IDENTITY_URL:-https://vram-fieldtest.sociobot.in/release.json}"
 commit_api="${VRAM_FIELDTEST_COMMIT_API:-https://api.github.com/repos/$repo/commits/$expected}"

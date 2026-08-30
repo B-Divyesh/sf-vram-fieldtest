@@ -116,6 +116,13 @@ test('@claim:completed-run-coverage coverage is withheld until all three pattern
   assert.match(output, /1 passed/);
 });
 
+test('regression: a GPU-free plan never labels its request as completed coverage', () => {
+  const plan = JSON.parse(execFileSync('cargo', ['run', '--quiet', '--', 'plan', '--detected-mib', '12288', '--coverage', '90', '--window-mib', '1024', '--json'], { encoding: 'utf8' }));
+  assert.equal(plan.requested_mib, 11060);
+  assert.ok(plan.requested_percent >= 90);
+  assert.equal(Object.hasOwn(plan, 'coverage_percent'), false);
+});
+
 test('@claim:selected-thermal-stop hardware runs require temperature from the selected adapter', () => {
   for (const name of ['hardware_run_requires_temperature_and_stops_if_it_disappears', 'selected_adapter_telemetry_never_falls_back_to_the_first_gpu', 'drm_telemetry_reads_only_the_selected_adapter']) {
     const output = execFileSync('cargo', ['test', '--quiet', `tests::${name}`, '--', '--exact'], { encoding: 'utf8' });
@@ -145,12 +152,12 @@ test('@claim:installer-checksum shell installer downloads, verifies, and install
   const sourceCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const server = createServer((req, res) => {
     const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.7', assets: [
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.8', assets: [
       { browser_download_url: `${base}/vram-fieldtest-linux-x86_64.tar.gz` },
       { browser_download_url: `${base}/SHA256SUMS` },
       { browser_download_url: `${base}/PROVENANCE.json` }
     ] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.7', source_commit: sourceCommit }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.8', source_commit: sourceCommit }, null, 2));
     // GitHub may return minified JSON; the installer must not depend on a line
     // beginning with the top-level sha field.
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: sourceCommit, commit: { tree: { sha: 'b'.repeat(40) } } }));
@@ -197,7 +204,7 @@ test('installer refuses a stale release instead of installing the wrong CLI', as
       child.on('exit', status => resolve({ status, stderr }));
     });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Downloads for v0\.1\.7 are not published yet/);
+    assert.match(result.stderr, /Downloads for v0\.1\.8 are not published yet/);
     assert.equal(existsSync(join(dir, 'vram-fieldtest')), false);
   } finally {
     server.close();
@@ -208,8 +215,8 @@ test('installer refuses a stale release instead of installing the wrong CLI', as
 test('regression: installer refuses the expected tag when it points at an ancestor commit', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vram-ancestor-installer-'));
   const server = createServer((req, res) => {
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.7', assets: [] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.7', source_commit: 'a'.repeat(40) }, null, 2));
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.8', assets: [] }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.8', source_commit: 'a'.repeat(40) }, null, 2));
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: 'b'.repeat(40) }, null, 2));
     res.writeHead(404).end();
   });
