@@ -203,16 +203,28 @@ test('regression: PowerShell installer copies only a checksum-matching archive',
   let checksum = createHash('sha256').update(archive).digest('hex');
   const server = createServer((req, res) => {
     const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.8', assets: [
+    if (req.url === '/release') {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({ tag_name: 'v0.1.8', assets: [
       { name: 'vram-fieldtest-windows-x86_64.zip', browser_download_url: `${base}/tool.zip` },
       { name: 'SHA256SUMS', browser_download_url: `${base}/SHA256SUMS` },
       { name: 'PROVENANCE.json', browser_download_url: `${base}/PROVENANCE.json` }
-    ] }));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.8', source_commit: sourceCommit }));
-    if (req.url === '/commit') return res.end(JSON.stringify({ sha: sourceCommit }));
+      ] }));
+    }
+    if (req.url === '/identity') {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({ tag: 'v0.1.8', source_commit: sourceCommit }));
+    }
+    if (req.url === '/commit') {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({ sha: sourceCommit }));
+    }
     if (req.url === '/tool.zip') return res.end(archive);
     if (req.url === '/SHA256SUMS') return res.end(`${checksum}  vram-fieldtest-windows-x86_64.zip\n`);
-    if (req.url === '/PROVENANCE.json') return res.end(JSON.stringify({ source_commit: sourceCommit }));
+    if (req.url === '/PROVENANCE.json') {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({ source_commit: sourceCommit }));
+    }
     res.writeHead(404).end();
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
