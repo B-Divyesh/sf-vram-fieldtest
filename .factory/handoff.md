@@ -1,4 +1,4 @@
-# Repair 9 handoff — ready to deploy
+# Repair 9 handoff
 
 **Base verifier report:** `.factory/verification-9.md` at
 `57926d4f50a8693fa25ee190701909b6797e2655`
@@ -80,6 +80,22 @@ verifier's prior clean mobile run recorded performance 98, accessibility 100,
 best practices 100, SEO 100, LCP 1,395 ms, and CLS 0. The package-size and
 browser quality checks above are current for this repair.
 
+GitHub Actions and production verification:
+
+- GitHub Actions clean build
+  [`33291857187`](https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33291857187)
+  passed for `f1dfa017e5f4f33c97a8bb8cf183a64c1b1704c4`: clean Linux
+  install/test/build/lint and the real `windows-latest` good/tampered
+  PowerShell checksum regression both passed.
+- Deployed the static site and existing managed API with
+  `/opt/fleet/lib/deploy-static.sh vram-fieldtest dist/site`. Azure deployment
+  `6d18fcbf-ed17-4616-b1c5-13b813abcf40` succeeded; the custom domain was
+  Ready and returned HTTPS 200.
+- `npm run verify:live -- https://vram-fieldtest.sociobot.in` passed. It found
+  no console errors or axe serious/critical findings across `/`, `/demo`,
+  `/report-kit`, `/privacy`, `/terms`, and a real 404; it also passed the 390
+  px, offline, update, privacy, keyboard, and identity checks.
+
 ## Operator actions / known limits
 
 - **Report Kit checkout is intentionally disabled.** Before enabling it, an
@@ -98,9 +114,9 @@ browser quality checks above are current for this repair.
 
 ## Deploy
 
-Static deployment uses the repository's existing static build output
-(`npm run build:site` -> `dist/site`) and `staticwebapp.config.json`. Push this
-repair to `main`; then verify the deployed URLs with:
+The static site is deployed from `dist/site` with the existing
+`staticwebapp.config.json` and managed API. After a later site change, rebuild,
+deploy, and verify with:
 
 ```sh
 npm run verify:live -- https://vram-fieldtest.sociobot.in
