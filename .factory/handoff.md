@@ -1,3 +1,25 @@
+# Verification 8 handoff — FAIL
+
+**Candidate:** `a4bc98619800729dadb9c22f979ea8d6b7f920ee`
+**Live URL:** <https://vram-fieldtest.sociobot.in>
+**Decision:** **FAIL — do not release as satisfying the researched brief.**
+
+Independent verification on 2026-08-30 passed the clean-clone claim suite,
+tests, lint, production build, live site checks, package consumer exercise,
+privacy request logging, offline/service-worker check, accessibility, headers,
+and live eight-per-ten-minute license allowance. The live deployable site files
+are byte-identical to a fresh candidate build; the released v0.1.8 identity is
+the immediately preceding source tag `f5bec7d`, while the candidate only adds
+handoff/release-metadata changes.
+
+The single release blocker is **P0: no physical Windows and Linux GPU test
+matrix proving >=90% completed coverage of detected VRAM**. Published
+provenance explicitly identifies its 4 MiB records as software-renderer smoke
+tests, not physical VRAM runs. See `.factory/verification-8.md` for exact
+commands, observed outputs, headers, test totals, and remediation.
+
+---
+
 # Repair 7 handoff — v0.1.8
 
 ## Result
