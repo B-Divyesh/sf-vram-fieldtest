@@ -100,6 +100,11 @@ All checks below passed on 2026-08-30 UTC.
   Axe findings on all six tested routes.
 - GitHub clean-build run `33286483243` passed:
   <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33286483243>.
+- Manual release rehearsal `33286838311` passed verify, both hosted protocol
+  smokes, and Linux, Windows, Intel macOS, and Apple Silicon package builds:
+  <https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33286838311>.
+  As designed for `workflow_dispatch`, the physical jobs and publication were
+  skipped.
 
 ## Deployment and live checks
 
