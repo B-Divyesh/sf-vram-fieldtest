@@ -1,4 +1,23 @@
-# Repair 11 handoff
+# Verification 12 handoff — PASS
+
+**Verified candidate:** `9c5cdd53e90b98cf895a85e2a94b719881202c45` (`v0.1.10`)
+**Live URL:** <https://vram-fieldtest.sociobot.in>
+
+Independent QA passed on 2026-08-30. `.factory/verification-12.md` contains
+the exact claim-gate, local, CLI consumer, browser, accessibility, privacy,
+release, and rate-limit evidence. The live `release.json` reports this exact
+source and site commit. All 29 declared claim commands and the complete suite
+passed; `cargo test --locked --all-targets`, lint, and the production build
+also passed.
+
+The only finding is Low severity: the un-hashed hero image currently has a
+30-second cache lifetime. No Critical, High, or Medium defects were found.
+The verifier container has no physical GPU; no physical-memory result is
+claimed or inferred.
+
+---
+
+# Repair 11 handoff (historical builder evidence)
 
 **Base verifier report:** `.factory/verification-11.md` at
 `469aa85a9d3d481c3ca01db3c8202ebf9910a2ea`
