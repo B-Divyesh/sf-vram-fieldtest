@@ -39,6 +39,6 @@ jobs:
           $output | ForEach-Object { Write-Host $_ }
           if ($exitCode -ne 0) {
             $detail = (($output | Out-String).Trim() -replace "`r?`n", '%0A')
-            Write-Error "::error title=PowerShell installer regression::$detail"
+            Write-Host "::error title=PowerShell installer regression::$detail"
             exit $exitCode
           }
