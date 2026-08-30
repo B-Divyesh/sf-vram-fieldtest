@@ -291,7 +291,8 @@ test('installer refuses a stale release instead of installing the wrong CLI', as
       child.on('exit', status => resolve({ status, stderr }));
     });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Downloads for v0\.1\.8 are not published yet/);
+    const expectedTag = `v${JSON.parse(readFileSync('package.json', 'utf8')).version}`;
+    assert.match(result.stderr, new RegExp(`Downloads for ${expectedTag.replaceAll('.', '\\.')} are not published yet`));
     assert.equal(existsSync(join(dir, 'vram-fieldtest')), false);
   } finally {
     server.close();
