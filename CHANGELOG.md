@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.10 — 2026-08-30
+
+- Report selected-adapter thermal readiness during `inspect`, for every vendor.
+- Block non-NVIDIA adapters before test-memory allocation when temperature data is missing.
+- Limit release and coverage wording to package checks and user-provided runs.
+- Present unsigned Windows and macOS packages as checksum-verified, not publisher-signed.
+
 ## 0.1.9 — 2026-08-30
 
 - Publish a candidate-matched release identity and block stale tag/site pairs.

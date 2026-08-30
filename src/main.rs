@@ -120,6 +120,14 @@ struct Adapter {
     detected_vram_mib: Option<u64>,
     source: String,
 }
+#[derive(Serialize, Debug)]
+struct AdapterInspection {
+    #[serde(flatten)]
+    adapter: Adapter,
+    default_run_ready: bool,
+    temperature_provider: Option<String>,
+    safety_note: String,
+}
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Limits {
     requested_mib: u64,
@@ -193,9 +201,12 @@ fn main() -> Result<()> {
     Ok(())
 }
 fn print_inventory(json: bool) {
-    let adapters: Vec<Adapter> = enumerate_gpu_candidates()
+    let adapters: Vec<AdapterInspection> = enumerate_gpu_candidates()
         .into_iter()
-        .map(|candidate| candidate.report)
+        .map(|candidate| {
+            let reading = local_telemetry(&candidate.report);
+            adapter_inspection(candidate.report, reading.as_ref())
+        })
         .collect();
     if json {
         println!(
@@ -205,13 +216,31 @@ fn print_inventory(json: bool) {
     } else if adapters.is_empty() {
         println!("No GPU adapter is available. Check the graphics driver, then try again.");
     } else {
-        for adapter in adapters {
+        for inspection in adapters {
+            let adapter = inspection.adapter;
             println!("[{}] {} ({})", adapter.index, adapter.name, adapter.backend);
             match adapter.detected_vram_mib {
                 Some(m) => println!("    Reported GPU memory: {m} MiB ({})", adapter.source),
                 None => println!("    GPU memory: unavailable ({})", adapter.source),
             }
+            println!("    Thermal preflight: {}", inspection.safety_note);
         }
+    }
+}
+
+fn adapter_inspection(adapter: Adapter, reading: Option<&TelemetryReading>) -> AdapterInspection {
+    let provider = reading
+        .filter(|value| value.temperature_c.is_some())
+        .map(|value| value.provider.clone());
+    let default_run_ready = provider.is_some();
+    AdapterInspection {
+        adapter,
+        default_run_ready,
+        temperature_provider: provider.clone(),
+        safety_note: provider.map_or_else(
+            || "unavailable; the default run is blocked before test-memory allocation".into(),
+            |name| format!("available from {name}"),
+        ),
     }
 }
 fn print_plan(args: PlanArgs) {
@@ -433,7 +462,7 @@ fn run(args: RunArgs) -> Result<()> {
         ),
         _ => format!("{bad} mismatches found. Do not rely on this GPU until it is retested."),
     };
-    let mut notes = vec!["The tool retains no telemetry and writes only the requested local report.".into(), "A coverage value is calculated only from all three completed patterns in this report on this host.".into(), "Each allocation is at most 64 MiB so duration and thermal guards can stop between GPU submissions and during CPU verification.".into(), "A pass is evidence for this bounded pattern run. It does not certify every GPU fault.".into()];
+    let mut notes = vec!["The tool sends no telemetry and writes only the requested local report.".into(), "A coverage value is calculated only from all three completed patterns in this user-provided run on this host.".into(), "Each allocation is at most 64 MiB so duration and thermal guards can stop between GPU submissions and during CPU verification.".into(), "A pass is evidence for this bounded pattern run. It does not certify every GPU fault.".into()];
     if coverage.is_none() {
         notes.push(
             "No coverage value is reported because this run did not complete all three patterns."
@@ -978,7 +1007,7 @@ fn thermal_limit_for_run(
     if allow_no_thermal_stop || allow_software {
         return Ok(None);
     }
-    bail!("Not started: temperature telemetry for the selected adapter is unavailable, so the 85°C automatic stop cannot be enforced. Fix the local GPU telemetry provider or, only if you accept manual monitoring, pass --allow-no-thermal-stop.")
+    bail!("Not started before test-memory allocation: temperature telemetry for the selected adapter is unavailable, so the 85°C automatic stop cannot be enforced. This safe default applies to every GPU vendor. Fix the local GPU telemetry provider or, only if you accept manual monitoring, pass --allow-no-thermal-stop.")
 }
 
 fn thermal_stop(telemetry: &Telemetry, thermal_limit: u8) -> Option<String> {
@@ -1654,6 +1683,66 @@ mod tests {
         assert!(thermal_stop_sample(&hot, 85)
             .unwrap()
             .contains("at or above the 85°C limit"));
+    }
+    #[test]
+    fn non_nvidia_inspection_blocks_default_run_without_temperature() {
+        for (vendor_id, name) in [(0x1002, "AMD Radeon"), (0x8086, "Intel Arc")] {
+            let adapter = Adapter {
+                index: 0,
+                name: name.into(),
+                backend: "fixture backend".into(),
+                device_type: "discrete GPU".into(),
+                vendor_id,
+                device_id: 0x1234,
+                detected_vram_mib: Some(8192),
+                source: "fixture host driver".into(),
+            };
+            let inspection = adapter_inspection(adapter, None);
+            assert!(!inspection.default_run_ready);
+            assert_eq!(inspection.temperature_provider, None);
+            assert!(inspection
+                .safety_note
+                .contains("blocked before test-memory allocation"));
+
+            let unavailable = Telemetry {
+                provider: "not available for selected adapter".into(),
+                samples: vec![TelemetrySample {
+                    at_ms: 0,
+                    phase: "before run".into(),
+                    temperature_c: None,
+                    core_clock_mhz: None,
+                    memory_clock_mhz: None,
+                }],
+                unavailable_reason: Some("fixture".into()),
+            };
+            let error = thermal_limit_for_run(&unavailable, false, false).unwrap_err();
+            assert!(error
+                .to_string()
+                .contains("Not started before test-memory allocation"));
+        }
+
+        let adapter = Adapter {
+            index: 1,
+            name: "AMD Radeon".into(),
+            backend: "fixture backend".into(),
+            device_type: "discrete GPU".into(),
+            vendor_id: 0x1002,
+            device_id: 0x744c,
+            detected_vram_mib: Some(24_576),
+            source: "fixture host driver".into(),
+        };
+        let reading = TelemetryReading {
+            provider: "fixture selected-adapter hwmon".into(),
+            temperature_c: Some(57.0),
+            core_clock_mhz: Some(1800.0),
+            memory_clock_mhz: Some(1000.0),
+        };
+        let inspection = adapter_inspection(adapter, Some(&reading));
+        assert!(inspection.default_run_ready);
+        assert_eq!(
+            inspection.temperature_provider.as_deref(),
+            Some("fixture selected-adapter hwmon")
+        );
     }
     #[cfg(target_os = "linux")]
     #[test]

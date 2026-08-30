@@ -95,7 +95,7 @@ test('@claim:unsigned-builds Windows and macOS artifacts are not signed in the r
   assert.match(workflow, /pkgbuild/);
   assert.doesNotMatch(workflow, /codesign|signtool|Authenticode/i);
   assert.match(readFileSync('README.md', 'utf8'), /Windows and macOS builds are unsigned\. SHA-256 checks verify file integrity; they do not code-sign a download\./);
-  assert.match(readFileSync('site/src/app.js', 'utf8'), /Windows and macOS packages are unsigned\. SHA-256 checks do not sign them\./);
+  assert.match(readFileSync('site/src/app.js', 'utf8'), /Windows and macOS packages are unsigned\. SHA-256 checks verify bytes, not publisher identity\./);
 });
 
 test('@claim:safety-consent real runs require explicit consent', () => {
@@ -119,6 +119,9 @@ test('@claim:host-vram-inspection inspect returns the adapters and memory values
     assert.equal(typeof adapter.index, 'number');
     assert.equal(typeof adapter.name, 'string');
     assert.ok(Object.hasOwn(adapter, 'detected_vram_mib'));
+    assert.equal(typeof adapter.default_run_ready, 'boolean');
+    assert.ok(Object.hasOwn(adapter, 'temperature_provider'));
+    assert.equal(typeof adapter.safety_note, 'string');
   }
   const text = execFileSync('target/debug/vram-fieldtest', ['inspect'], { encoding: 'utf8' });
   assert.match(text, /No GPU adapter is available|\[\d+\] .+ \(WebGPU /);
@@ -143,6 +146,14 @@ test('@claim:selected-thermal-stop hardware runs require temperature from the se
   }
 });
 
+test('@claim:safe-non-nvidia-default inspect exposes safe default status for non-NVIDIA adapters', () => {
+  const output = execFileSync('cargo', ['test', '--quiet', 'tests::non_nvidia_inspection_blocks_default_run_without_temperature', '--', '--exact'], { encoding: 'utf8' });
+  assert.match(output, /1 passed/);
+  const readme = readFileSync('README.md', 'utf8');
+  assert.match(readme, /For every GPU vendor, `inspect` reports whether the default thermal stop is ready/);
+  assert.match(readme, /blocked before test-memory allocation/);
+});
+
 test('@claim:bounded-stop-report a bounded stop saves incomplete JSON and HTML', () => {
   const output = execFileSync('cargo', ['test', '--quiet', 'tests::stop_reports_are_saved_and_mismatches_map_to_exit_two', '--', '--exact'], { encoding: 'utf8' });
   assert.match(output, /1 passed/);
@@ -165,12 +176,12 @@ test('@claim:installer-checksum shell and PowerShell installers verify SHA-256 b
   const sourceCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const server = createServer((req, res) => {
     const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.9', assets: [
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.10', assets: [
       { browser_download_url: `${base}/vram-fieldtest-linux-x86_64.tar.gz` },
       { browser_download_url: `${base}/SHA256SUMS` },
       { browser_download_url: `${base}/PROVENANCE.json` }
     ] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.9', source_commit: sourceCommit }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.10', source_commit: sourceCommit }, null, 2));
     // GitHub may return minified JSON; the installer must not depend on a line
     // beginning with the top-level sha field.
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: sourceCommit, commit: { tree: { sha: 'b'.repeat(40) } } }));
@@ -219,7 +230,7 @@ test('regression: Windows PowerShell installer copies only a checksum-matching a
     const base = `http://127.0.0.1:${server.address().port}`;
     if (req.url === '/release') {
       res.setHeader('Content-Type', 'application/json');
-      return res.end(JSON.stringify({ tag_name: 'v0.1.9', assets: [
+      return res.end(JSON.stringify({ tag_name: 'v0.1.10', assets: [
       { name: 'vram-fieldtest-windows-x86_64.zip', browser_download_url: `${base}/tool.zip` },
       { name: 'SHA256SUMS', browser_download_url: `${base}/SHA256SUMS` },
       { name: 'PROVENANCE.json', browser_download_url: `${base}/PROVENANCE.json` }
@@ -227,7 +238,7 @@ test('regression: Windows PowerShell installer copies only a checksum-matching a
     }
     if (req.url === '/identity') {
       res.setHeader('Content-Type', 'application/json');
-      return res.end(JSON.stringify({ tag: 'v0.1.9', source_commit: sourceCommit }));
+      return res.end(JSON.stringify({ tag: 'v0.1.10', source_commit: sourceCommit }));
     }
     if (req.url === '/commit') {
       res.setHeader('Content-Type', 'application/json');
@@ -303,8 +314,8 @@ test('installer refuses a stale release instead of installing the wrong CLI', as
 test('regression: installer refuses the expected tag when it points at an ancestor commit', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vram-ancestor-installer-'));
   const server = createServer((req, res) => {
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.9', assets: [] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.9', source_commit: 'a'.repeat(40) }, null, 2));
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.10', assets: [] }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.10', source_commit: 'a'.repeat(40) }, null, 2));
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: 'b'.repeat(40) }, null, 2));
     res.writeHead(404).end();
   });
@@ -375,7 +386,7 @@ test('@claim:release-package-provenance tagged publication includes package chec
   assert.match(workflow, /publish:[\s\S]*needs: build/);
   assert.match(workflow, /evidence_kind:\"package-release\"/);
   assert.match(workflow, /This release contains package checks only/);
-  assert.match(workflow, /coverage evidence comes from completed user runs/);
+  assert.match(workflow, /coverage figures come from completed user-provided runs/);
   assert.doesNotMatch(workflow, /physical-gpu|hardware_linux|hardware_windows|physical-gpu-release-matrix/);
 });
 
@@ -441,7 +452,7 @@ test('@claim:host-evidence-bundle user-host evidence validates a completed local
       const asset = platform === 'linux' ? 'vram-fieldtest-linux-x86_64.tar.gz' : 'vram-fieldtest-windows-x86_64.zip';
       const common = [
         'scripts/hardware-evidence.py', 'bundle', '--platform', platform, '--source-commit', sourceCommit,
-        '--release-version', '0.1.9', '--runner-environment', 'user supplied fixture',
+        '--release-version', '0.1.10', '--runner-environment', 'user supplied fixture',
         '--inventory-command', platform === 'linux' ? './vram-fieldtest inspect --json' : '.\\vram-fieldtest.exe inspect --json', '--command', command,
         '--binary', binaryPath, '--binary-asset', asset, '--inventory', inventoryPath, '--result', resultPath,
         '--report', reportPath, '--html', htmlPath, '--output', evidencePath
@@ -449,7 +460,7 @@ test('@claim:host-evidence-bundle user-host evidence validates a completed local
       execFileSync('python3', common, { stdio: 'pipe' });
       execFileSync('python3', [
         'scripts/hardware-evidence.py', 'validate', '--evidence', evidencePath, '--platform', platform,
-        '--source-commit', sourceCommit, '--release-version', '0.1.9', '--binary', binaryPath
+        '--source-commit', sourceCommit, '--release-version', '0.1.10', '--binary', binaryPath
       ], { stdio: 'pipe' });
 
       const software = structuredClone(report);
@@ -465,7 +476,7 @@ test('@claim:host-evidence-bundle user-host evidence validates a completed local
       writeFileSync(reportPath, JSON.stringify(software));
       const rejected = spawnSync('python3', [
         'scripts/hardware-evidence.py', 'bundle', '--platform', platform, '--source-commit', sourceCommit,
-        '--release-version', '0.1.9', '--runner-environment', 'user supplied fixture',
+        '--release-version', '0.1.10', '--runner-environment', 'user supplied fixture',
         '--inventory-command', platform === 'linux' ? './vram-fieldtest inspect --json' : '.\\vram-fieldtest.exe inspect --json',
         '--command', `${command} --allow-software --mib 4`, '--binary', binaryPath, '--binary-asset', asset,
         '--inventory', inventoryPath, '--result', resultPath, '--report', reportPath, '--html', htmlPath,

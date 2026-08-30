@@ -60,7 +60,7 @@ jobs:
           result="$(cargo run --locked --quiet -- run --yes --allow-software --adapter 0 --mib 4 --window-mib 4 --seconds 900 --output protocol-output --json)"
           printf '%s' "$result" | jq -e '.status == "pass" and .tested_mib == 4 and .resident_mib == 4 and .resident_allocations >= 1' >/dev/null
           jq -e '.residency.retained_through_patterns == true and .limits.tested_mib == 4 and (.patterns | length) == 3 and ([.patterns[].status == "pass"] | all)' protocol-output/report.json >/dev/null
-          jq -n --arg platform "${{ matrix.label }}" --arg source_commit "$GITHUB_SHA" --arg evidence_kind "software-renderer smoke only; not a physical VRAM run" --argjson inventory "$inventory" --argjson result "$result" --slurpfile report protocol-output/report.json \
+          jq -n --arg platform "${{ matrix.label }}" --arg source_commit "$GITHUB_SHA" --arg evidence_kind "software-renderer package protocol check; no hardware result" --argjson inventory "$inventory" --argjson result "$result" --slurpfile report protocol-output/report.json \
             '{platform:$platform,source_commit:$source_commit,evidence_kind:$evidence_kind,inventory:$inventory,result:$result,report:$report[0]}' > "protocol-${{ matrix.label }}.json"
       - uses: actions/upload-artifact@v4
         with:
@@ -180,7 +180,7 @@ jobs:
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           commit="$(git rev-parse HEAD)"
           jq -n --arg version "$version" --arg source_commit "$commit" \
-            '{version:$version,source_commit:$source_commit,evidence_kind:"package-release",note:"This release contains package checks only. The CLI detects and tests the GPU on the host where a user runs it; coverage evidence comes from completed user runs."}' > release/PROVENANCE.json
+            '{version:$version,source_commit:$source_commit,evidence_kind:"package-release",note:"This release contains package checks only and no factory GPU-lab results. The CLI detects and tests the GPU on the host where a user runs it; coverage figures come from completed user-provided runs."}' > release/PROVENANCE.json
           jq -n --arg version "$version" --arg source_commit "$commit" --arg base "$base" \
             '{version:$version,source_commit:$source_commit,assets:{"linux-x86_64":($base+"/vram-fieldtest-linux-x86_64.tar.gz"),"linux-deb":($base+"/vram-fieldtest_"+$version+"_amd64.deb"),"linux-rpm":($base+"/vram-fieldtest-"+$version+"-1.x86_64.rpm"),"windows-x86_64":($base+"/vram-fieldtest-windows-x86_64.zip"),"macos-x86_64":($base+"/vram-fieldtest-macos-x86_64.tar.gz"),"macos-aarch64":($base+"/vram-fieldtest-macos-aarch64.tar.gz"),"macos-x86_64-pkg":($base+"/vram-fieldtest-macos-x86_64.pkg"),"macos-aarch64-pkg":($base+"/vram-fieldtest-macos-aarch64.pkg")}}' > release/latest.json
           (cd release && find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sed 's#  \./#  #') > release/SHA256SUMS
@@ -207,5 +207,5 @@ jobs:
           mkdir published-check/windows
           unzip -q published-check/vram-fieldtest-windows-x86_64.zip -d published-check/windows
           jq -e --arg commit "$GITHUB_SHA" '.source_commit == $commit' published-check/PROVENANCE.json >/dev/null
-          jq -e --arg commit "$GITHUB_SHA" '.evidence_kind == "package-release" and .source_commit == $commit and (.note | contains("coverage evidence comes from completed user runs"))' published-check/PROVENANCE.json >/dev/null
+          jq -e --arg commit "$GITHUB_SHA" '.evidence_kind == "package-release" and .source_commit == $commit and (.note | contains("coverage figures come from completed user-provided runs"))' published-check/PROVENANCE.json >/dev/null
           jq -e --arg commit "$GITHUB_SHA" --arg version "${GITHUB_REF_NAME#v}" '.source_commit == $commit and .version == $version and ([.assets[] | contains("/releases/download/v" + $version + "/")] | all)' published-check/latest.json >/dev/null

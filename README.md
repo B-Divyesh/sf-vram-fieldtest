@@ -59,6 +59,8 @@ vram-fieldtest inspect
 
 `inspect` lists each adapter visible to that host with an index. It shows any memory value the local driver exposes. It does not use a remote lab or invent a value.
 
+For every GPU vendor, `inspect` reports whether the default thermal stop is ready. If the selected card has no temperature reading, the default run is blocked before test-memory allocation. This includes AMD and Intel adapters on systems whose drivers expose memory but not temperature.
+
 Run only with working cooling and a clear view of the machine:
 
 ```sh
@@ -123,9 +125,9 @@ npm run verify:live -- https://vram-fieldtest.sociobot.in
 
 ### Release packages and host reports
 
-A tagged release publishes the tested packages, their SHA-256 checksums, and source provenance. Hosted software-renderer jobs are package protocol checks only.
+A tagged release publishes the tested packages, their SHA-256 checksums, and source provenance. Hosted software-renderer jobs check the package protocol only.
 
-The CLI detects and tests the GPU on the user's host. Coverage evidence comes from completed user runs on those hosts. It does not provide physical Windows or Linux GPU coverage. You can validate a completed report from a host you control with:
+The CLI detects and tests the GPU on the user's host. Coverage figures come from completed user-provided runs. Release packages include no factory GPU-lab results. You can check the required fields in a report you provide with:
 
 ```sh
 python3 scripts/hardware-evidence.py validate \

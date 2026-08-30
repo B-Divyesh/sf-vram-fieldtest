@@ -1,4 +1,4 @@
-const CACHE = 'vram-fieldtest-shell-v0.1.9';
+const CACHE = 'vram-fieldtest-shell-v0.1.10';
 const SHELL = ['/', '/demo', '/styles.css', '/mobile.css', '/app.js', '/hero-vram-small.webp', '/favicon.svg'];
 
 self.addEventListener('install', event => {

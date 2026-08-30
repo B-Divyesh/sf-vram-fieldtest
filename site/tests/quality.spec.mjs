@@ -5,17 +5,17 @@ import { readFileSync } from 'node:fs';
 
 let sourceCommit;
 try {
-  sourceCommit = execFileSync('git', ['rev-parse', 'v0.1.9^{commit}'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  sourceCommit = execFileSync('git', ['rev-parse', 'v0.1.10^{commit}'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 } catch {
   sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 }
 
 const releaseFixture = {
-  tag_name: 'v0.1.9',
+  tag_name: 'v0.1.10',
   assets: [
-    { name: 'vram-fieldtest-linux-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.9/vram-fieldtest-linux-x86_64.tar.gz' },
-    { name: 'vram-fieldtest-windows-x86_64.zip', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.9/vram-fieldtest-windows-x86_64.zip' },
-    { name: 'vram-fieldtest-macos-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.9/vram-fieldtest-macos-x86_64.tar.gz' },
+    { name: 'vram-fieldtest-linux-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.10/vram-fieldtest-linux-x86_64.tar.gz' },
+    { name: 'vram-fieldtest-windows-x86_64.zip', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.10/vram-fieldtest-windows-x86_64.zip' },
+    { name: 'vram-fieldtest-macos-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.10/vram-fieldtest-macos-x86_64.tar.gz' },
     { name: 'SHA256SUMS', size: 800, browser_download_url: 'https://github.com/example/SHA256SUMS' },
     { name: 'latest.json', size: 800, browser_download_url: 'https://github.com/example/latest.json' },
     { name: 'PROVENANCE.json', size: 800, browser_download_url: 'https://github.com/example/PROVENANCE.json' }
@@ -31,23 +31,23 @@ test('@claim:release-download landing picks a real platform release asset', asyn
   await page.goto('/');
   const download = page.getByRole('link', { name: 'Download for windows' });
   await expect(download).toBeVisible();
-  await expect(download).toHaveAttribute('href', /v0\.1\.9\/vram-fieldtest-windows-x86_64\.zip$/);
-  await expect(page.getByText('v0.1.9 · 2 MB')).toBeVisible();
+  await expect(download).toHaveAttribute('href', /v0\.1\.10\/vram-fieldtest-windows-x86_64\.zip$/);
+  await expect(page.getByText('v0.1.10 · 2 MB')).toBeVisible();
 });
 
 test('@claim:host-evidence-scope the site and docs limit coverage evidence to completed user-host runs', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Detects and tests the GPU on the host where you run it.')).toBeVisible();
-  await expect(page.getByText('Coverage evidence comes from completed user runs on their hosts.')).toBeVisible();
+  await expect(page.getByText('Coverage figures come from completed user-provided runs.')).toBeVisible();
   await expect(page.locator('main')).not.toContainText('Targets 90% of reported memory');
   await page.goto('/demo');
   await expect(page.getByText('93.8% sample value')).toBeVisible();
-  await expect(page.getByText('Coverage evidence comes only from completed user runs on their hosts.')).toBeVisible();
+  await expect(page.getByText('Coverage figures come only from completed user-provided runs.')).toBeVisible();
   const readme = readFileSync('README.md', 'utf8');
   const demo = readFileSync('.factory/demo.md', 'utf8');
   const helper = readFileSync('scripts/hardware-evidence.py', 'utf8');
-  expect(readme).toContain("The CLI detects and tests the GPU on the user's host. Coverage evidence comes from completed user runs on those hosts. It does not provide physical Windows or Linux GPU coverage.");
-  expect(demo).toContain('It tests that host only. Coverage evidence comes from that host\'s completed user run.');
+  expect(readme).toContain("The CLI detects and tests the GPU on the user's host. Coverage figures come from completed user-provided runs. Release packages include no factory GPU-lab results.");
+  expect(demo).toContain('It tests that host only. Coverage figures come from completed user-provided runs.');
   expect(helper).toContain('"evidence_kind": "user-host-completed-run"');
 });
 
@@ -57,8 +57,8 @@ test('release update replaces a fresh cache entry from the previous version', as
     data: { tag_name: 'v0.1.2', assets: [] }
   })));
   await page.goto('/');
-  await expect(page.getByRole('link', { name: 'Download for windows' })).toHaveAttribute('href', /v0\.1\.9\//);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('vram:release')).data.tag_name)).toBe('v0.1.9');
+  await expect(page.getByRole('link', { name: 'Download for windows' })).toHaveAttribute('href', /v0\.1\.10\//);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('vram:release')).data.tag_name)).toBe('v0.1.10');
 });
 
 test('regression: landing refuses an expected release tag from another commit', async ({ page }) => {
