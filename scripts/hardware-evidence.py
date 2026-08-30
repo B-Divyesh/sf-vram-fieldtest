@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and validate release evidence from a completed physical GPU run."""
+"""Build and validate user-supplied evidence from a completed host GPU run."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 MIB = 1024 * 1024
-PHYSICAL_TYPES = {"discrete GPU", "integrated GPU"}
+SUPPORTED_GPU_TYPES = {"discrete GPU", "integrated GPU"}
 PATTERNS = {"solid AA", "solid 55", "address XOR"}
 SCHEMA = "vram-fieldtest/hardware-evidence-1"
 
@@ -45,13 +45,13 @@ def require(condition: bool, message: str) -> None:
         raise EvidenceError(message)
 
 
-def physical_adapters(inventory: Any, platform: str) -> list[dict[str, Any]]:
+def host_adapters(inventory: Any, platform: str) -> list[dict[str, Any]]:
     require(isinstance(inventory, list), "inventory must be a JSON array")
     adapters = []
     for adapter in inventory:
         if not isinstance(adapter, dict):
             continue
-        if adapter.get("device_type") not in PHYSICAL_TYPES:
+        if adapter.get("device_type") not in SUPPORTED_GPU_TYPES:
             continue
         detected = adapter.get("detected_vram_mib")
         if not isinstance(detected, int) or isinstance(detected, bool) or detected <= 0:
@@ -75,10 +75,10 @@ def validate_report(report: Any, inventory: Any, platform: str, version: str) ->
     require(report.get("host", {}).get("os") == platform, "report host OS does not match the evidence platform")
 
     adapter = report.get("adapter", {})
-    require(adapter.get("device_type") in PHYSICAL_TYPES, "selected adapter is not a physical GPU")
+    require(adapter.get("device_type") in SUPPORTED_GPU_TYPES, "selected adapter is not a supported GPU detected on this host")
     detected = adapter.get("detected_vram_mib")
     require(isinstance(detected, int) and not isinstance(detected, bool) and detected > 0, "detected VRAM must be a positive integer")
-    candidates = physical_adapters(inventory, platform)
+    candidates = host_adapters(inventory, platform)
     require(any(
         candidate.get("index") == adapter.get("index")
         and candidate.get("vendor_id") == adapter.get("vendor_id")
@@ -87,7 +87,7 @@ def validate_report(report: Any, inventory: Any, platform: str, version: str) ->
         and candidate.get("name") == adapter.get("name")
         and candidate.get("source") == adapter.get("source")
         for candidate in candidates
-    ), "selected report adapter is not present in the physical inventory")
+    ), "selected report adapter is not present in the host inventory")
 
     limits = report.get("limits", {})
     tested = limits.get("tested_mib")
@@ -99,7 +99,7 @@ def validate_report(report: Any, inventory: Any, platform: str, version: str) ->
     require(math.isfinite(coverage) and 90 <= coverage <= 100, "completed coverage must be between 90% and 100%")
     calculated = tested / detected * 100
     require(abs(coverage - calculated) <= 0.001, "coverage does not match tested and detected VRAM")
-    require(limits.get("coverage_target_percent") == 90, "the physical run must use the 90% target")
+    require(limits.get("coverage_target_percent") == 90, "the host run must use the 90% target")
     require(limits.get("resident_mib") == tested, "resident memory does not equal tested memory")
     require(limits.get("thermal_limit_c") == 85, "the 85C automatic thermal stop was not active")
 
@@ -135,7 +135,7 @@ def validate_report(report: Any, inventory: Any, platform: str, version: str) ->
         require(math.isfinite(temperature) and temperature < 85, "a thermal sample reached the stop threshold")
 
     verdict = report.get("verdict", {})
-    require(verdict.get("status") == "pass", "physical run verdict is not pass")
+    require(verdict.get("status") == "pass", "host run verdict is not pass")
 
 
 def validate_result(result: Any, report: dict[str, Any]) -> None:
@@ -170,7 +170,7 @@ def validate_evidence(
 ) -> None:
     require(isinstance(evidence, dict), "evidence must be a JSON object")
     require(evidence.get("schema") == SCHEMA, "unexpected evidence schema")
-    require(evidence.get("evidence_kind") == "physical-gpu-completed-run", "evidence is not a completed physical GPU run")
+    require(evidence.get("evidence_kind") == "user-host-completed-run", "evidence is not a completed user-host run")
     platform = evidence.get("platform")
     require(platform in {"linux", "windows"}, "evidence platform must be linux or windows")
     if expected_platform:
@@ -183,7 +183,8 @@ def validate_evidence(
     require(re.fullmatch(r"\d+\.\d+\.\d+", version) is not None, "release version is invalid")
     if expected_version:
         require(version == expected_version, "evidence version does not match the release")
-    require(evidence.get("runner_environment") == "self-hosted", "evidence did not run in the physical self-hosted lab")
+    host_description = evidence.get("runner_environment")
+    require(isinstance(host_description, str) and 1 <= len(host_description.strip()) <= 128, "host description is missing")
 
     command = evidence.get("command", "")
     inventory_command = evidence.get("inventory_command", "")
@@ -191,7 +192,7 @@ def validate_evidence(
     require(" run " in command and "--yes" in command, "reproducible run command is missing")
     require(re.search(r"--coverage(?:=|\s+)90(?:\s|$)", command) is not None, "run command does not request 90% coverage")
     for forbidden in ("--mib", "--allow-software", "--allow-no-thermal-stop"):
-        require(forbidden not in command, f"physical evidence command contains {forbidden}")
+        require(forbidden not in command, f"host evidence command contains {forbidden}")
 
     files = evidence.get("files", {})
     report_name = files.get("report", {}).get("name", "")
@@ -227,8 +228,8 @@ def validate_evidence(
 
 def select_adapter(args: argparse.Namespace) -> None:
     inventory = load_json(args.inventory)
-    adapters = physical_adapters(inventory, args.platform)
-    require(len(adapters) > 0, f"no physical {args.platform} GPU with detected VRAM is available")
+    adapters = host_adapters(inventory, args.platform)
+    require(len(adapters) > 0, f"no supported {args.platform} GPU with detected VRAM is available on this host")
     print(adapters[0]["index"])
 
 
@@ -245,7 +246,7 @@ def bundle(args: argparse.Namespace) -> None:
     validate_html(html, report)
     evidence = {
         "schema": SCHEMA,
-        "evidence_kind": "physical-gpu-completed-run",
+        "evidence_kind": "user-host-completed-run",
         "platform": args.platform,
         "source_commit": args.source_commit,
         "release_version": args.release_version,
@@ -263,7 +264,7 @@ def bundle(args: argparse.Namespace) -> None:
     }
     validate_evidence(evidence, args.output.parent, binary_path=args.binary)
     args.output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"Validated physical {args.platform} evidence: {args.output}")
+    print(f"Validated user-host {args.platform} evidence: {args.output}")
 
 
 def validate(args: argparse.Namespace) -> None:
@@ -276,18 +277,18 @@ def validate(args: argparse.Namespace) -> None:
         expected_version=args.release_version,
         binary_path=args.binary,
     )
-    print(f"Validated physical {evidence['platform']} evidence: {args.evidence}")
+    print(f"Validated user-host {evidence['platform']} evidence: {args.evidence}")
 
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     commands = root.add_subparsers(dest="operation", required=True)
-    select = commands.add_parser("select-adapter", help="print the first eligible physical adapter index")
+    select = commands.add_parser("select-adapter", help="print the first eligible adapter index on this host")
     select.add_argument("--platform", choices=("linux", "windows"), required=True)
     select.add_argument("--inventory", type=Path, required=True)
     select.set_defaults(handler=select_adapter)
 
-    create = commands.add_parser("bundle", help="create a validated physical evidence manifest")
+    create = commands.add_parser("bundle", help="create a validated user-host evidence manifest")
     create.add_argument("--platform", choices=("linux", "windows"), required=True)
     create.add_argument("--source-commit", required=True)
     create.add_argument("--release-version", required=True)

@@ -62,7 +62,7 @@ try {
     assert.ok(box.width >= 44 && box.height >= 44, `${label} touch target is smaller than 44 by 44 px`);
   }
   await touch.goto(base.href, { waitUntil: 'networkidle' });
-  for (const label of ['Technical details', 'Have a license?']) {
+  for (const label of ['Technical details', 'Have an operator-issued license?']) {
     const disclosure = touch.getByText(label, { exact: true });
     await disclosure.focus();
     const focus = await disclosure.evaluate(element => {
@@ -111,6 +111,11 @@ try {
   assert.equal(commitResponse.status, 200);
   const tagged = await commitResponse.json();
   assert.equal(identity.source_commit, tagged.sha, 'deployed source does not match release tag');
+  assert.match(identity.site_commit, /^[a-f0-9]{40}$/, 'deployed site commit is missing');
+  const mainResponse = await fetch('https://api.github.com/repos/B-Divyesh/sf-vram-fieldtest/commits/main', { headers: githubHeaders });
+  assert.equal(mainResponse.status, 200);
+  const main = await mainResponse.json();
+  assert.equal(identity.site_commit, main.sha, 'deployed site does not match main');
   summary.identity = identity;
   assert.deepEqual(summary.consoleErrors, [], 'browser console errors');
   console.log(JSON.stringify(summary, null, 2));

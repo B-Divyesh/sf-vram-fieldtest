@@ -23,3 +23,13 @@ jobs:
         run: npm ci && npm test && npm run build
       - name: Rust formatting and strict lint
         run: npm run lint
+
+  powershell-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Exercise the PowerShell checksum guard with a good and tampered archive
+        run: node --test --test-name-pattern "PowerShell installer" site/tests/claims.test.mjs

@@ -62,7 +62,7 @@ test('all demo controls and footer links meet the 44 CSS pixel touch target', as
 test('disclosure focus rings are designed and meet 3 to 1 contrast', async ({ page }) => {
   await page.route('https://api.github.com/repos/**/releases/latest', route => route.fulfill({ status: 503, body: 'unavailable' }));
   await page.goto('/');
-  for (const label of ['Technical details', 'Have a license?']) {
+  for (const label of ['Technical details', 'Have an operator-issued license?']) {
     const summary = page.getByText(label, { exact: true });
     await summary.focus();
     const style = await summary.evaluate(element => {

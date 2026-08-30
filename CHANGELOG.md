@@ -2,9 +2,11 @@
 
 ## Unreleased
 
-- Block tagged publication until packaged binaries complete physical Windows and Linux GPU runs covering at least 90% of detected VRAM.
-- Publish validated hardware JSON/HTML reports, exact commands, and binary/report checksums with release provenance.
-- Keep hosted software-renderer checks as protocol smoke tests only; they can no longer satisfy the release evidence gate.
+- Publish tagged packages after package and protocol checks, with SHA-256 checksums and source provenance.
+- State clearly that GPU reports are evidence from the host where a user runs the CLI, not a factory-owned Windows or Linux hardware matrix.
+- Bound the workflow duration at the CLI-supported 900 seconds and test its release binary parser before GPU selection.
+- Hide Report Kit checkout until an operator configures its Sociobot product mapping, while retaining operator-issued license restoration.
+- Test that Report Kit never uploads a chosen report and add a Windows PowerShell checksum fixture to CI.
 
 ## 0.1.8 — 2026-08-30
 

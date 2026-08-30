@@ -30,7 +30,7 @@ On PowerShell:
 irm https://vram-fieldtest.sociobot.in/install.ps1 | iex
 ```
 
-Each installer downloads the matching archive and checks its SHA-256 checksum. It then adds the binary to your path.
+Each installer downloads the matching archive and checks its SHA-256 checksum before it copies the binary to your path.
 
 Windows and macOS builds are unsigned. On macOS, use right-click → Open if Gatekeeper blocks an unsigned binary.
 
@@ -67,7 +67,7 @@ vram-fieldtest run --yes --adapter 0 --output ./gpu-record
 
 `--yes` confirms that you want to start a compute memory test. If you omit `--mib`, the tool derives a request from VRAM reported on that host.
 
-The CLI starts only when it can read the selected card's temperature. It stops at 85°C or when that reading disappears.
+The CLI starts only when it can read the selected card's temperature. It stops at 85°C or when that reading disappears. Some local drivers do not expose a usable selected-card reading. The default run refuses to start on those hosts.
 
 `--allow-no-thermal-stop` is an unsafe override. It disables the automatic thermal stop and requires manual monitoring.
 
@@ -121,13 +121,11 @@ After deployment:
 npm run verify:live -- https://vram-fieldtest.sociobot.in
 ```
 
-### Release hardware gate
+### Release packages and host reports
 
-A tagged release is not published until physical Windows and Linux reports pass the 90% evidence validator. Register one x64 runner for each operating system with the custom `physical-gpu` label. Each machine needs a physical GPU, working temperature telemetry, and enough idle memory for the test.
+A tagged release publishes the tested packages, their SHA-256 checksums, and source provenance. Hosted software-renderer jobs are package protocol checks only.
 
-The release workflow tests the packaged binaries, not fresh local builds. It publishes each host's JSON and HTML reports, their checksums, the exact command, and the tested binary hash in `PROVENANCE.json`. Software renderers, missing VRAM, unsafe thermal overrides, incomplete patterns, and coverage below 90% stop publication.
-
-Validate a downloaded evidence bundle with:
+The project does not claim a factory-owned Windows or Linux hardware matrix. `inspect` and `run` record only the adapter and result visible on the host where you run them. You can validate a completed report from a host you control with:
 
 ```sh
 python3 scripts/hardware-evidence.py validate \
@@ -142,4 +140,4 @@ python3 scripts/hardware-evidence.py validate \
 
 MIT. See [LICENSE](LICENSE). Read the site [privacy](https://vram-fieldtest.sociobot.in/privacy) and [terms](https://vram-fieldtest.sociobot.in/terms).
 
-Report Kit costs $19 once. It turns a local report into a printable cover and three batch labels. The core test and report files stay free.
+Report Kit turns a local report into a printable cover and three batch labels. Checkout is disabled until an operator configures its Sociobot product mapping. The core test and report files stay free.

@@ -140,7 +140,7 @@ test('@claim:mismatch-exit a mismatch maps to process exit code two', () => {
   assert.match(output, /1 passed/);
 });
 
-test('@claim:installer-checksum shell installer downloads, verifies, and installs', async () => {
+test('@claim:installer-checksum shell and PowerShell installers verify SHA-256 before installation', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vram-installer-'));
   const stage = join(dir, 'stage');
   const install = join(dir, 'bin');
@@ -181,6 +181,67 @@ test('@claim:installer-checksum shell installer downloads, verifies, and install
       child.on('exit', code => code === 0 ? resolve() : reject(new Error(stderr)));
     });
     assert.equal(readFileSync(join(install, 'vram-fieldtest'), 'utf8'), '#!/bin/sh\necho sample\n');
+    const powershell = readFileSync('site/public/install.ps1', 'utf8');
+    assert.match(powershell, /\$actual = \(Get-FileHash "\$temp\\tool\.zip" -Algorithm SHA256\)\.Hash\.ToLower\(\)/);
+    assert.match(powershell, /if \(\$wanted\.ToLower\(\) -ne \$actual\) \{ throw 'SHA256 verification failed\.' \}; Expand-Archive/);
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('regression: PowerShell installer copies only a checksum-matching archive', { skip: process.platform !== 'win32' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vram-powershell-installer-'));
+  const stage = join(dir, 'stage');
+  const zip = join(dir, 'vram-fieldtest-windows-x86_64.zip');
+  const sourceCommit = 'a'.repeat(40);
+  mkdirSync(stage);
+  writeFileSync(join(stage, 'vram-fieldtest.exe'), 'sample windows binary');
+  const quote = value => value.replaceAll("'", "''");
+  execFileSync('powershell.exe', ['-NoProfile', '-Command', `Compress-Archive -Path '${quote(join(stage, 'vram-fieldtest.exe'))}' -DestinationPath '${quote(zip)}' -Force`]);
+  const archive = readFileSync(zip);
+  let checksum = createHash('sha256').update(archive).digest('hex');
+  const server = createServer((req, res) => {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.8', assets: [
+      { name: 'vram-fieldtest-windows-x86_64.zip', browser_download_url: `${base}/tool.zip` },
+      { name: 'SHA256SUMS', browser_download_url: `${base}/SHA256SUMS` },
+      { name: 'PROVENANCE.json', browser_download_url: `${base}/PROVENANCE.json` }
+    ] }));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.8', source_commit: sourceCommit }));
+    if (req.url === '/commit') return res.end(JSON.stringify({ sha: sourceCommit }));
+    if (req.url === '/tool.zip') return res.end(archive);
+    if (req.url === '/SHA256SUMS') return res.end(`${checksum}  vram-fieldtest-windows-x86_64.zip\n`);
+    if (req.url === '/PROVENANCE.json') return res.end(JSON.stringify({ source_commit: sourceCommit }));
+    res.writeHead(404).end();
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const runInstaller = localAppData => new Promise(resolve => {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'site/public/install.ps1'], {
+      env: {
+        ...process.env,
+        LOCALAPPDATA: localAppData,
+        VRAM_FIELDTEST_RELEASE_API: `${base}/release`,
+        VRAM_FIELDTEST_IDENTITY_URL: `${base}/identity`,
+        VRAM_FIELDTEST_COMMIT_API: `${base}/commit`
+      }
+    });
+    let stderr = '';
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.on('exit', status => resolve({ status, stderr }));
+  });
+  try {
+    const goodRoot = join(dir, 'good-local-app-data');
+    const good = await runInstaller(goodRoot);
+    assert.equal(good.status, 0, good.stderr);
+    assert.equal(readFileSync(join(goodRoot, 'VRAMFieldTest', 'vram-fieldtest.exe'), 'utf8'), 'sample windows binary');
+    checksum = '0'.repeat(64);
+    const badRoot = join(dir, 'bad-local-app-data');
+    const bad = await runInstaller(badRoot);
+    assert.notEqual(bad.status, 0);
+    assert.match(bad.stderr, /SHA256 verification failed/);
+    assert.equal(existsSync(join(badRoot, 'VRAMFieldTest', 'vram-fieldtest.exe')), false);
   } finally {
     server.close();
     rmSync(dir, { recursive: true, force: true });
@@ -275,7 +336,7 @@ test('release workflow covers the required native assets', () => {
   assert.doesNotMatch(workflow, /macos-13/);
 });
 
-test('@claim:physical-release-gate tagged publication fails closed without physical Windows and Linux evidence', () => {
+test('@claim:release-package-provenance tagged publication includes package checksums and source provenance', () => {
   const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
   assert.match(workflow, /PROVENANCE\.json/);
   assert.match(workflow, /\.source_commit == \$commit/);
@@ -284,26 +345,32 @@ test('@claim:physical-release-gate tagged publication fails closed without physi
   assert.match(workflow, /sha256sum -c -/);
   assert.match(workflow, /latest\.json/);
   assert.match(workflow, /os: ubuntu-latest[\s\S]*os: windows-latest/);
-  assert.match(workflow, /hardware_linux:[\s\S]*runs-on: \[self-hosted, Linux, X64, physical-gpu\]/);
-  assert.match(workflow, /hardware_windows:[\s\S]*runs-on: \[self-hosted, Windows, X64, physical-gpu\]/);
-  assert.match(workflow, /publish:[\s\S]*needs: \[build, hardware_linux, hardware_windows\]/);
-  assert.match(workflow, /evidence_kind:\"physical-gpu-release-matrix\"/);
-  assert.match(workflow, /hardware_runs/);
-  assert.match(workflow, /hardware-evidence\.py validate/);
-  assert.match(workflow, /coverage_percent >= 90/);
-  assert.match(workflow, /detected_vram_mib > 0/);
-  assert.match(workflow, /thermal_limit_c == 85/);
-  assert.doesNotMatch(workflow.slice(workflow.indexOf('  publish:')), /protocol_runs|software-renderer smoke only/);
-  for (const [name, next] of [['hardware_linux:', 'hardware_windows:'], ['hardware_windows:', 'publish:']]) {
-    const start = workflow.indexOf(`  ${name}`);
-    const end = workflow.indexOf(`\n  ${next}`, start + name.length);
-    const job = workflow.slice(start, end);
-    assert.match(job, /--coverage 90/);
-    assert.doesNotMatch(job, /--allow-software|--allow-no-thermal-stop|--mib(?:=|\s)/);
+  assert.match(workflow, /publish:[\s\S]*needs: build/);
+  assert.match(workflow, /evidence_kind:\"package-release\"/);
+  assert.match(workflow, /does not claim a factory hardware matrix/);
+  assert.doesNotMatch(workflow, /physical-gpu|hardware_linux|hardware_windows|physical-gpu-release-matrix/);
+});
+
+test('regression: the packaged workflow duration is accepted before GPU selection', () => {
+  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  assert.match(workflow, /--seconds 900/);
+  assert.doesNotMatch(workflow, /--seconds 7200/);
+  execFileSync('cargo', ['build', '--locked', '--release'], { stdio: 'pipe' });
+  const dir = mkdtempSync(join(tmpdir(), 'vram-workflow-duration-'));
+  try {
+    const result = spawnSync('target/release/vram-fieldtest', [
+      'run', '--yes', '--adapter', '999999', '--coverage', '90', '--window-mib', '1024',
+      '--seconds', '900', '--output', dir, '--json'
+    ], { encoding: 'utf8' });
+    assert.equal(result.status, 1, result.stderr);
+    assert.doesNotMatch(result.stderr, /invalid value .*--seconds|not in 10\.\.=900/);
+    assert.match(result.stderr, /No GPU adapter is available|Adapter 999999 is not available/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('regression: evidence validator accepts the physical contract and rejects the verifier software record', () => {
+test('@claim:host-evidence-bundle user-host evidence validates a completed local report and rejects software fixtures', () => {
   const sourceCommit = 'a'.repeat(40);
   for (const platform of ['linux', 'windows']) {
     const dir = mkdtempSync(join(tmpdir(), `vram-evidence-${platform}-`));
@@ -324,7 +391,7 @@ test('regression: evidence validator accepts the physical contract and rejects t
         ],
         unavailable_reason: null
       };
-      report.notes = ['Controlled schema fixture; never published as hardware evidence.'];
+      report.notes = ['Controlled schema fixture; never published as host evidence.'];
       const result = {
         status: 'pass', coverage_percent: 93.75, mismatches: 0, tested_mib: 11520,
         resident_mib: 11520, resident_allocations: 180
@@ -341,12 +408,12 @@ test('regression: evidence validator accepts the physical contract and rejects t
       writeFileSync(htmlPath, `<title>VRAM Field Test report</title><p>Tested 11520 MiB. Detected VRAM on this host: 12288 MiB. Coverage from this run: 93.8%.</p><p>solid AA solid 55 address XOR</p>`);
       writeFileSync(binaryPath, `fixture-${platform}`);
       const command = platform === 'linux'
-        ? './vram-fieldtest run --yes --adapter 0 --coverage 90 --window-mib 1024 --seconds 7200 --output ./output --json'
-        : '.\\vram-fieldtest.exe run --yes --adapter 0 --coverage 90 --window-mib 1024 --seconds 7200 --output .\\output --json';
+        ? './vram-fieldtest run --yes --adapter 0 --coverage 90 --window-mib 1024 --seconds 900 --output ./output --json'
+        : '.\\vram-fieldtest.exe run --yes --adapter 0 --coverage 90 --window-mib 1024 --seconds 900 --output .\\output --json';
       const asset = platform === 'linux' ? 'vram-fieldtest-linux-x86_64.tar.gz' : 'vram-fieldtest-windows-x86_64.zip';
       const common = [
         'scripts/hardware-evidence.py', 'bundle', '--platform', platform, '--source-commit', sourceCommit,
-        '--release-version', '0.1.8', '--runner-environment', 'self-hosted',
+        '--release-version', '0.1.8', '--runner-environment', 'user supplied fixture',
         '--inventory-command', platform === 'linux' ? './vram-fieldtest inspect --json' : '.\\vram-fieldtest.exe inspect --json', '--command', command,
         '--binary', binaryPath, '--binary-asset', asset, '--inventory', inventoryPath, '--result', resultPath,
         '--report', reportPath, '--html', htmlPath, '--output', evidencePath
@@ -370,14 +437,14 @@ test('regression: evidence validator accepts the physical contract and rejects t
       writeFileSync(reportPath, JSON.stringify(software));
       const rejected = spawnSync('python3', [
         'scripts/hardware-evidence.py', 'bundle', '--platform', platform, '--source-commit', sourceCommit,
-        '--release-version', '0.1.8', '--runner-environment', 'self-hosted',
+        '--release-version', '0.1.8', '--runner-environment', 'user supplied fixture',
         '--inventory-command', platform === 'linux' ? './vram-fieldtest inspect --json' : '.\\vram-fieldtest.exe inspect --json',
         '--command', `${command} --allow-software --mib 4`, '--binary', binaryPath, '--binary-asset', asset,
         '--inventory', inventoryPath, '--result', resultPath, '--report', reportPath, '--html', htmlPath,
         '--output', evidencePath
       ], { encoding: 'utf8' });
       assert.equal(rejected.status, 1);
-      assert.match(rejected.stderr, /selected adapter is not a physical GPU/);
+      assert.match(rejected.stderr, /selected adapter is not a supported GPU detected on this host/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -436,6 +503,7 @@ test('hashed site assets receive the immutable cache route', () => {
     expectedSourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   }
   assert.equal(identity.source_commit, expectedSourceCommit);
+  assert.equal(identity.site_commit, execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim());
   assert.match(readFileSync('staticwebapp.config.json', 'utf8'), /"\/release\.json"[\s\S]*no-store/);
 });
 

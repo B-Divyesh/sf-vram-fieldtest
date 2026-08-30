@@ -32,13 +32,14 @@ const pageHead = (html, route) => {
     .replace(/(<meta name="twitter:description" content=")[^"]*(">)/, `$1${description}$2`);
 };
 const releaseTag = `v${packageData.version}`;
+const siteCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 let sourceCommit;
 try {
   sourceCommit = execFileSync('git', ['rev-parse', `${releaseTag}^{commit}`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 } catch {
-  sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  sourceCommit = siteCommit;
 }
-await writeFile(resolve(out, 'release.json'), `${JSON.stringify({ tag: releaseTag, source_commit: sourceCommit }, null, 2)}\n`);
+await writeFile(resolve(out, 'release.json'), `${JSON.stringify({ tag: releaseTag, source_commit: sourceCommit, site_commit: siteCommit }, null, 2)}\n`);
 const assetDir = resolve(out, 'assets');
 await mkdir(assetDir, { recursive: true });
 const hash = content => createHash('sha256').update(content).digest('hex').slice(0, 12);

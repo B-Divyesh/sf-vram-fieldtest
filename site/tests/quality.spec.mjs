@@ -34,11 +34,12 @@ test('@claim:release-download landing picks a real platform release asset', asyn
   await expect(page.getByText('v0.1.8 · 2 MB')).toBeVisible();
 });
 
-test('regression: the site does not present a plan or fixture as physical coverage evidence', async ({ page }) => {
+test('regression: the site does not present a factory hardware matrix or a fixture as coverage evidence', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Inspects VRAM exposed on the host where it runs.')).toBeVisible();
   await expect(page.getByText('Coverage is calculated only from your completed run on the host where you run it.')).toBeVisible();
   await expect(page.locator('main')).not.toContainText('Targets 90% of reported memory');
+  await expect(page.locator('main')).not.toContainText('factory hardware matrix');
   await page.goto('/demo');
   await expect(page.getByText('93.8% sample value')).toBeVisible();
   await expect(page.getByText('Your coverage value comes only from your own completed run on its host.')).toBeVisible();
@@ -119,19 +120,22 @@ test('@claim:no-account core demo opens without credentials or account storage',
   expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.includes('account') || key.startsWith('sb_license:')))).toEqual([]);
 });
 
-test('@claim:report-kit-output active Report Kit turns local JSON into a cover and labels', async ({ page }) => {
+test('@claim:report-kit-output active Report Kit creates labels locally without uploading report contents', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('sb_license:vram-fieldtest', 'fixture-license');
     localStorage.setItem('sb_license_check:vram-fieldtest', JSON.stringify({ at: Date.now(), valid: true }));
   });
   const requests = [];
-  page.on('request', request => requests.push(request.url()));
+  page.on('request', request => requests.push({ url: request.url(), method: request.method(), body: request.postData() }));
   await page.goto('/report-kit');
+  const requestsBeforeUpload = requests.length;
   await page.setInputFiles('#report-file', 'examples/sample-report.json');
   await expect(page.getByText('Printable cover and batch labels are ready.')).toBeVisible();
   await expect(page.locator('.batch-labels li')).toHaveCount(3);
   await expect(page.getByRole('button', { name: 'Print cover and labels' })).toBeVisible();
-  expect(requests.some(url => url.includes('/verify?'))).toBeFalsy();
+  expect(requests.slice(requestsBeforeUpload)).toEqual([]);
+  expect(requests.some(request => request.url.includes('/verify?'))).toBeFalsy();
+  expect(requests.some(request => (request.body || '').includes('Example GPU 12 GB'))).toBeFalsy();
 });
 
 test('Report Kit replaces malformed JSON parser text with a recovery instruction', async ({ page }) => {
@@ -149,20 +153,22 @@ test('Report Kit replaces malformed JSON parser text with a recovery instruction
   await expect(page.locator('#kit-note')).not.toContainText('Expected property');
 });
 
-test('@claim:report-kit-price Report Kit shows a $19 checkout while the core demo report stays free', async ({ page }) => {
+test('@claim:report-kit-operator-gate Report Kit has no checkout until its Sociobot mapping is configured', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 2, name: 'Report Kit — $19 once' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Buy Report Kit' })).toHaveAttribute('href', 'https://api.sociobot.in/api/v1/products/vram-fieldtest/checkout');
+  await expect(page.getByRole('heading', { level: 2, name: 'Report Kit' })).toBeVisible();
+  await expect(page.getByText('Checkout is unavailable until an operator configures its Sociobot product mapping.')).toBeVisible();
+  await expect(page.locator('a[href*="/checkout"]')).toHaveCount(0);
   await expect(page.getByText('The core test and report files stay free.')).toBeVisible();
-  await page.goto('/demo');
-  await expect(page.getByText('PASS — no mismatches')).toBeVisible();
+  await page.goto('/report-kit');
+  await expect(page.getByRole('heading', { level: 2, name: 'Report Kit checkout is not available.' })).toBeVisible();
+  await expect(page.locator('a[href*="/checkout"]')).toHaveCount(0);
 });
 
 test('@claim:license-storage a license token is stored only after the visitor restores it', async ({ page }) => {
   await page.route('**/api/license/verify**', route => route.fulfill({ json: { valid: false, reason: 'invalid' } }));
   await page.goto('/');
   expect(await page.evaluate(() => localStorage.getItem('sb_license:vram-fieldtest'))).toBeNull();
-  await page.getByText('Have a license?', { exact: true }).click();
+  await page.getByText('Have an operator-issued license?', { exact: true }).click();
   await page.locator('#license').fill('fixture-license');
   await page.getByRole('button', { name: 'Restore license' }).click();
   await expect.poll(() => page.evaluate(() => localStorage.getItem('sb_license:vram-fieldtest'))).toBe('fixture-license');
@@ -180,7 +186,7 @@ test('@claim:license-rate-limit Retry-After prevents repeated license checks', a
   });
   await page.goto('/');
   await expect.poll(() => checks).toBe(1);
-  await page.getByText('Have a license?', { exact: true }).click();
+  await page.getByText('Have an operator-issued license?', { exact: true }).click();
   await page.locator('#license').fill('fixture-license');
   await page.getByRole('button', { name: 'Restore license' }).click();
   await expect(page.getByText('License checks are temporarily limited. Try again after', { exact: false })).toBeVisible();
@@ -203,7 +209,7 @@ test('keyboard navigation, route focus, and back button work', async ({ page }) 
 
 test('keyboard opens and closes both disclosure controls', async ({ page }) => {
   await page.goto('/');
-  for (const label of ['Technical details', 'Have a license?']) {
+  for (const label of ['Technical details', 'Have an operator-issued license?']) {
     const summary = page.getByText(label, { exact: true });
     const details = summary.locator('..');
     await summary.focus();
