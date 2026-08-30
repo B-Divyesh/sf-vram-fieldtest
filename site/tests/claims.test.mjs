@@ -27,6 +27,17 @@ test('regression: package lock is synchronized and supports npm ci', () => {
   }
 });
 
+test('regression: a versioned site release identity is the current candidate commit', () => {
+  execFileSync('npm', ['run', 'build:site'], { stdio: 'pipe' });
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  const identity = JSON.parse(readFileSync('dist/site/release.json', 'utf8'));
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  assert.deepEqual(identity, { tag: `v${pkg.version}`, source_commit: head, site_commit: head });
+  assert.match(readFileSync('site/src/app.js', 'utf8'), new RegExp(`releaseTag = 'v${pkg.version}'`));
+  assert.match(readFileSync('site/public/install.sh', 'utf8'), new RegExp(`expected=\\"v${pkg.version}\\"`));
+  assert.match(readFileSync('site/public/install.ps1', 'utf8'), new RegExp(`\\$expected = 'v${pkg.version}'`));
+});
+
 test('@claim:demo-report CLI demo writes JSON and print report', () => {
   const out = execFileSync('cargo', ['run', '--quiet', '--', 'demo', '--json'], { encoding: 'utf8' });
   const response = JSON.parse(out);
@@ -83,6 +94,8 @@ test('@claim:unsigned-builds Windows and macOS artifacts are not signed in the r
   const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
   assert.match(workflow, /pkgbuild/);
   assert.doesNotMatch(workflow, /codesign|signtool|Authenticode/i);
+  assert.match(readFileSync('README.md', 'utf8'), /Windows and macOS builds are unsigned\. SHA-256 checks verify file integrity; they do not code-sign a download\./);
+  assert.match(readFileSync('site/src/app.js', 'utf8'), /Windows and macOS packages are unsigned\. SHA-256 checks do not sign them\./);
 });
 
 test('@claim:safety-consent real runs require explicit consent', () => {
@@ -152,12 +165,12 @@ test('@claim:installer-checksum shell and PowerShell installers verify SHA-256 b
   const sourceCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const server = createServer((req, res) => {
     const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.8', assets: [
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.9', assets: [
       { browser_download_url: `${base}/vram-fieldtest-linux-x86_64.tar.gz` },
       { browser_download_url: `${base}/SHA256SUMS` },
       { browser_download_url: `${base}/PROVENANCE.json` }
     ] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.8', source_commit: sourceCommit }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.9', source_commit: sourceCommit }, null, 2));
     // GitHub may return minified JSON; the installer must not depend on a line
     // beginning with the top-level sha field.
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: sourceCommit, commit: { tree: { sha: 'b'.repeat(40) } } }));
@@ -206,7 +219,7 @@ test('regression: Windows PowerShell installer copies only a checksum-matching a
     const base = `http://127.0.0.1:${server.address().port}`;
     if (req.url === '/release') {
       res.setHeader('Content-Type', 'application/json');
-      return res.end(JSON.stringify({ tag_name: 'v0.1.8', assets: [
+      return res.end(JSON.stringify({ tag_name: 'v0.1.9', assets: [
       { name: 'vram-fieldtest-windows-x86_64.zip', browser_download_url: `${base}/tool.zip` },
       { name: 'SHA256SUMS', browser_download_url: `${base}/SHA256SUMS` },
       { name: 'PROVENANCE.json', browser_download_url: `${base}/PROVENANCE.json` }
@@ -214,7 +227,7 @@ test('regression: Windows PowerShell installer copies only a checksum-matching a
     }
     if (req.url === '/identity') {
       res.setHeader('Content-Type', 'application/json');
-      return res.end(JSON.stringify({ tag: 'v0.1.8', source_commit: sourceCommit }));
+      return res.end(JSON.stringify({ tag: 'v0.1.9', source_commit: sourceCommit }));
     }
     if (req.url === '/commit') {
       res.setHeader('Content-Type', 'application/json');
@@ -289,8 +302,8 @@ test('installer refuses a stale release instead of installing the wrong CLI', as
 test('regression: installer refuses the expected tag when it points at an ancestor commit', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vram-ancestor-installer-'));
   const server = createServer((req, res) => {
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.8', assets: [] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.8', source_commit: 'a'.repeat(40) }, null, 2));
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.9', assets: [] }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.9', source_commit: 'a'.repeat(40) }, null, 2));
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: 'b'.repeat(40) }, null, 2));
     res.writeHead(404).end();
   });
@@ -360,7 +373,8 @@ test('@claim:release-package-provenance tagged publication includes package chec
   assert.match(workflow, /os: ubuntu-latest[\s\S]*os: windows-latest/);
   assert.match(workflow, /publish:[\s\S]*needs: build/);
   assert.match(workflow, /evidence_kind:\"package-release\"/);
-  assert.match(workflow, /does not claim a factory hardware matrix/);
+  assert.match(workflow, /This release contains package checks only/);
+  assert.match(workflow, /coverage evidence comes from completed user runs/);
   assert.doesNotMatch(workflow, /physical-gpu|hardware_linux|hardware_windows|physical-gpu-release-matrix/);
 });
 
@@ -426,7 +440,7 @@ test('@claim:host-evidence-bundle user-host evidence validates a completed local
       const asset = platform === 'linux' ? 'vram-fieldtest-linux-x86_64.tar.gz' : 'vram-fieldtest-windows-x86_64.zip';
       const common = [
         'scripts/hardware-evidence.py', 'bundle', '--platform', platform, '--source-commit', sourceCommit,
-        '--release-version', '0.1.8', '--runner-environment', 'user supplied fixture',
+        '--release-version', '0.1.9', '--runner-environment', 'user supplied fixture',
         '--inventory-command', platform === 'linux' ? './vram-fieldtest inspect --json' : '.\\vram-fieldtest.exe inspect --json', '--command', command,
         '--binary', binaryPath, '--binary-asset', asset, '--inventory', inventoryPath, '--result', resultPath,
         '--report', reportPath, '--html', htmlPath, '--output', evidencePath
@@ -434,7 +448,7 @@ test('@claim:host-evidence-bundle user-host evidence validates a completed local
       execFileSync('python3', common, { stdio: 'pipe' });
       execFileSync('python3', [
         'scripts/hardware-evidence.py', 'validate', '--evidence', evidencePath, '--platform', platform,
-        '--source-commit', sourceCommit, '--release-version', '0.1.8', '--binary', binaryPath
+        '--source-commit', sourceCommit, '--release-version', '0.1.9', '--binary', binaryPath
       ], { stdio: 'pipe' });
 
       const software = structuredClone(report);
@@ -450,7 +464,7 @@ test('@claim:host-evidence-bundle user-host evidence validates a completed local
       writeFileSync(reportPath, JSON.stringify(software));
       const rejected = spawnSync('python3', [
         'scripts/hardware-evidence.py', 'bundle', '--platform', platform, '--source-commit', sourceCommit,
-        '--release-version', '0.1.8', '--runner-environment', 'user supplied fixture',
+        '--release-version', '0.1.9', '--runner-environment', 'user supplied fixture',
         '--inventory-command', platform === 'linux' ? './vram-fieldtest inspect --json' : '.\\vram-fieldtest.exe inspect --json',
         '--command', `${command} --allow-software --mib 4`, '--binary', binaryPath, '--binary-asset', asset,
         '--inventory', inventoryPath, '--result', resultPath, '--report', reportPath, '--html', htmlPath,

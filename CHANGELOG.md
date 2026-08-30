@@ -2,11 +2,12 @@
 
 ## Unreleased
 
-- Publish tagged packages after package and protocol checks, with SHA-256 checksums and source provenance.
-- State clearly that GPU reports are evidence from the host where a user runs the CLI, not a factory-owned Windows or Linux hardware matrix.
-- Bound the workflow duration at the CLI-supported 900 seconds and test its release binary parser before GPU selection.
-- Hide Report Kit checkout until an operator configures its Sociobot product mapping, while retaining operator-issued license restoration.
-- Test that Report Kit never uploads a chosen report and add a Windows PowerShell checksum fixture to CI.
+## 0.1.9 — 2026-08-30
+
+- Publish a candidate-matched release identity and block stale tag/site pairs.
+- State precisely that the CLI detects and tests the user's host and that coverage evidence comes from completed user runs.
+- Keep Windows and macOS downloads explicitly unsigned; checksum verification is not code signing.
+- Keep Report Kit checkout fail-soft until an operator configures its Sociobot product mapping.
 
 ## 0.1.8 — 2026-08-30
 

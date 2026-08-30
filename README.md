@@ -32,7 +32,7 @@ irm https://vram-fieldtest.sociobot.in/install.ps1 | iex
 
 Each installer downloads the matching archive and checks its SHA-256 checksum before it copies the binary to your path.
 
-Windows and macOS builds are unsigned. On macOS, use right-click → Open if Gatekeeper blocks an unsigned binary.
+Windows and macOS builds are unsigned. SHA-256 checks verify file integrity; they do not code-sign a download. On macOS, use right-click → Open if Gatekeeper blocks an unsigned binary.
 
 Homebrew:
 
@@ -125,7 +125,7 @@ npm run verify:live -- https://vram-fieldtest.sociobot.in
 
 A tagged release publishes the tested packages, their SHA-256 checksums, and source provenance. Hosted software-renderer jobs are package protocol checks only.
 
-The project does not claim a factory-owned Windows or Linux hardware matrix. `inspect` and `run` record only the adapter and result visible on the host where you run them. You can validate a completed report from a host you control with:
+The CLI detects and tests the GPU on the user's host. Coverage evidence comes from completed user runs on those hosts. It does not provide physical Windows or Linux GPU coverage. You can validate a completed report from a host you control with:
 
 ```sh
 python3 scripts/hardware-evidence.py validate \
