@@ -34,7 +34,8 @@
   shell installer against a served archive; Windows CI now runs the PowerShell
   installer against matching and tampered ZIP fixtures. Its local release mock
   serves explicit JSON responses so PowerShell deserializes the same metadata
-  shape used in production.
+  shape used in production. The installer uses .NET SHA-256 directly rather
+  than depending on an optional `Get-FileHash` cmdlet.
 - Strengthened the Report Kit claim regression: it uploads the bundled JSON
   through the browser control, verifies the printable output, and asserts no
   request occurs after selection or contains report content.

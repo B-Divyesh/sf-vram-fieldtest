@@ -182,8 +182,9 @@ test('@claim:installer-checksum shell and PowerShell installers verify SHA-256 b
     });
     assert.equal(readFileSync(join(install, 'vram-fieldtest'), 'utf8'), '#!/bin/sh\necho sample\n');
     const powershell = readFileSync('site/public/install.ps1', 'utf8');
-    assert.match(powershell, /\$actual = \(Get-FileHash "\$temp\\tool\.zip" -Algorithm SHA256\)\.Hash\.ToLower\(\)/);
-    assert.match(powershell, /if \(\$wanted\.ToLower\(\) -ne \$actual\) \{ throw 'SHA256 verification failed\.' \}; Expand-Archive/);
+    assert.match(powershell, /\[System\.Security\.Cryptography\.SHA256\]::Create\(\)/);
+    assert.match(powershell, /\$actual = \[System\.BitConverter\]::ToString\(\$sha256\.ComputeHash\(\[System\.IO\.File\]::ReadAllBytes\("\$temp\\tool\.zip"\)\)\)\.Replace\('-', ''\)\.ToLowerInvariant\(\)/);
+    assert.match(powershell, /if \(\$wanted\.ToLower\(\) -ne \$actual\) \{ throw 'SHA256 verification failed\.' \}\s+Expand-Archive/);
   } finally {
     server.close();
     rmSync(dir, { recursive: true, force: true });

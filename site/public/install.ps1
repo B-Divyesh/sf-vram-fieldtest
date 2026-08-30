@@ -15,4 +15,25 @@ $sums = $release.assets | Where-Object { $_.name -eq 'SHA256SUMS' } | Select-Obj
 $provenance = $release.assets | Where-Object { $_.name -eq 'PROVENANCE.json' } | Select-Object -First 1
 if (-not $asset -or -not $sums -or -not $provenance) { throw 'Matching download is being published. See https://github.com/' + $repo + '/releases' }
 $temp = Join-Path ([System.IO.Path]::GetTempPath()) ('vram-fieldtest-' + [guid]::NewGuid()); New-Item -ItemType Directory $temp | Out-Null
-try { Invoke-WebRequest $asset.browser_download_url -OutFile "$temp\tool.zip"; Invoke-WebRequest $sums.browser_download_url -OutFile "$temp\SHA256SUMS"; Invoke-WebRequest $provenance.browser_download_url -OutFile "$temp\PROVENANCE.json"; if ((Get-Content "$temp\PROVENANCE.json" -Raw | ConvertFrom-Json).source_commit -ne $expectedCommit) { throw 'Release provenance does not match this site build.' }; $wanted = ((Get-Content "$temp\SHA256SUMS" | Where-Object { $_ -match [regex]::Escape($asset.name) }) -split '\s+')[0]; $actual = (Get-FileHash "$temp\tool.zip" -Algorithm SHA256).Hash.ToLower(); if ($wanted.ToLower() -ne $actual) { throw 'SHA256 verification failed.' }; Expand-Archive "$temp\tool.zip" "$temp\unpacked"; $dest = Join-Path $env:LOCALAPPDATA 'VRAMFieldTest'; New-Item -ItemType Directory -Force $dest | Out-Null; Copy-Item "$temp\unpacked\vram-fieldtest.exe" "$dest\vram-fieldtest.exe" -Force; [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path','User') + ";$dest", 'User'); Write-Output "Installed vram-fieldtest to $dest. Open a new terminal and run: vram-fieldtest demo" } finally { Remove-Item -Recurse -Force $temp }
+try {
+  Invoke-WebRequest $asset.browser_download_url -OutFile "$temp\tool.zip"
+  Invoke-WebRequest $sums.browser_download_url -OutFile "$temp\SHA256SUMS"
+  Invoke-WebRequest $provenance.browser_download_url -OutFile "$temp\PROVENANCE.json"
+  if ((Get-Content "$temp\PROVENANCE.json" -Raw | ConvertFrom-Json).source_commit -ne $expectedCommit) { throw 'Release provenance does not match this site build.' }
+  $wanted = ((Get-Content "$temp\SHA256SUMS" | Where-Object { $_ -match [regex]::Escape($asset.name) }) -split '\s+')[0]
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $actual = [System.BitConverter]::ToString($sha256.ComputeHash([System.IO.File]::ReadAllBytes("$temp\tool.zip"))).Replace('-', '').ToLowerInvariant()
+  } finally {
+    $sha256.Dispose()
+  }
+  if ($wanted.ToLower() -ne $actual) { throw 'SHA256 verification failed.' }
+  Expand-Archive "$temp\tool.zip" "$temp\unpacked"
+  $dest = Join-Path $env:LOCALAPPDATA 'VRAMFieldTest'
+  New-Item -ItemType Directory -Force $dest | Out-Null
+  Copy-Item "$temp\unpacked\vram-fieldtest.exe" "$dest\vram-fieldtest.exe" -Force
+  [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path','User') + ";$dest", 'User')
+  Write-Output "Installed vram-fieldtest to $dest. Open a new terminal and run: vram-fieldtest demo"
+} finally {
+  Remove-Item -Recurse -Force $temp
+}
