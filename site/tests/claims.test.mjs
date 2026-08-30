@@ -190,7 +190,7 @@ test('@claim:installer-checksum shell and PowerShell installers verify SHA-256 b
   }
 });
 
-test('regression: PowerShell installer copies only a checksum-matching archive', { skip: process.platform !== 'win32' }, async () => {
+test('regression: Windows PowerShell installer copies only a checksum-matching archive', { skip: process.platform !== 'win32' }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vram-powershell-installer-'));
   const stage = join(dir, 'stage');
   const zip = join(dir, 'vram-fieldtest-windows-x86_64.zip');
