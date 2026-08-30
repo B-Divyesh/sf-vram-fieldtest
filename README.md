@@ -121,6 +121,23 @@ After deployment:
 npm run verify:live -- https://vram-fieldtest.sociobot.in
 ```
 
+### Release hardware gate
+
+A tagged release is not published until physical Windows and Linux reports pass the 90% evidence validator. Register one x64 runner for each operating system with the custom `physical-gpu` label. Each machine needs a physical GPU, working temperature telemetry, and enough idle memory for the test.
+
+The release workflow tests the packaged binaries, not fresh local builds. It publishes each host's JSON and HTML reports, their checksums, the exact command, and the tested binary hash in `PROVENANCE.json`. Software renderers, missing VRAM, unsafe thermal overrides, incomplete patterns, and coverage below 90% stop publication.
+
+Validate a downloaded evidence bundle with:
+
+```sh
+python3 scripts/hardware-evidence.py validate \
+  --evidence hardware-linux-evidence.json \
+  --platform linux \
+  --source-commit <40-character-tag-commit> \
+  --release-version <version> \
+  --binary ./vram-fieldtest
+```
+
 ## License and privacy
 
 MIT. See [LICENSE](LICENSE). Read the site [privacy](https://vram-fieldtest.sociobot.in/privacy) and [terms](https://vram-fieldtest.sociobot.in/terms).

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Block tagged publication until packaged binaries complete physical Windows and Linux GPU runs covering at least 90% of detected VRAM.
+- Publish validated hardware JSON/HTML reports, exact commands, and binary/report checksums with release provenance.
+- Keep hosted software-renderer checks as protocol smoke tests only; they can no longer satisfy the release evidence gate.
+
 ## 0.1.8 — 2026-08-30
 
 - Rename preview output from `coverage_percent` to `requested_percent` so only completed reports carry a coverage value.

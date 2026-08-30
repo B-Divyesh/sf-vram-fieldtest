@@ -275,21 +275,113 @@ test('release workflow covers the required native assets', () => {
   assert.doesNotMatch(workflow, /macos-13/);
 });
 
-test('regression: release provenance records only software-renderer smoke evidence', () => {
+test('@claim:physical-release-gate tagged publication fails closed without physical Windows and Linux evidence', () => {
   const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
   assert.match(workflow, /PROVENANCE\.json/);
-  assert.match(workflow, /tr -d '\\r'/);
   assert.match(workflow, /\.source_commit == \$commit/);
   assert.match(workflow, /github\.event_name == 'push' && github\.ref_type == 'tag'/);
   assert.match(workflow, /test "\$\(git rev-parse HEAD\)" = "\$GITHUB_SHA"/);
   assert.match(workflow, /sha256sum -c -/);
   assert.match(workflow, /latest\.json/);
   assert.match(workflow, /os: ubuntu-latest[\s\S]*os: windows-latest/);
-  assert.match(workflow, /run --yes --allow-software --adapter 0 --mib 4/);
-  assert.match(workflow, /protocol_runs/);
-  assert.match(workflow, /software-renderer smoke only/);
-  assert.match(workflow, /\.residency\.retained_through_patterns == true/);
-  assert.doesNotMatch(workflow, /detected-mib 98304|88474|coverage_percent >= 90/);
+  assert.match(workflow, /hardware_linux:[\s\S]*runs-on: \[self-hosted, Linux, X64, physical-gpu\]/);
+  assert.match(workflow, /hardware_windows:[\s\S]*runs-on: \[self-hosted, Windows, X64, physical-gpu\]/);
+  assert.match(workflow, /publish:[\s\S]*needs: \[build, hardware_linux, hardware_windows\]/);
+  assert.match(workflow, /evidence_kind:\"physical-gpu-release-matrix\"/);
+  assert.match(workflow, /hardware_runs/);
+  assert.match(workflow, /hardware-evidence\.py validate/);
+  assert.match(workflow, /coverage_percent >= 90/);
+  assert.match(workflow, /detected_vram_mib > 0/);
+  assert.match(workflow, /thermal_limit_c == 85/);
+  assert.doesNotMatch(workflow.slice(workflow.indexOf('  publish:')), /protocol_runs|software-renderer smoke only/);
+  for (const [name, next] of [['hardware_linux:', 'hardware_windows:'], ['hardware_windows:', 'publish:']]) {
+    const start = workflow.indexOf(`  ${name}`);
+    const end = workflow.indexOf(`\n  ${next}`, start + name.length);
+    const job = workflow.slice(start, end);
+    assert.match(job, /--coverage 90/);
+    assert.doesNotMatch(job, /--allow-software|--allow-no-thermal-stop|--mib(?:=|\s)/);
+  }
+});
+
+test('regression: evidence validator accepts the physical contract and rejects the verifier software record', () => {
+  const sourceCommit = 'a'.repeat(40);
+  for (const platform of ['linux', 'windows']) {
+    const dir = mkdtempSync(join(tmpdir(), `vram-evidence-${platform}-`));
+    try {
+      const report = JSON.parse(readFileSync('examples/sample-report.json', 'utf8'));
+      report.host = { os: platform, hostname: `${platform}-fixture-bench` };
+      report.adapter = {
+        ...report.adapter,
+        name: 'Fixture GPU 12 GB',
+        backend: platform === 'linux' ? 'WebGPU Vulkan' : 'WebGPU Dx12',
+        source: platform === 'linux' ? 'Linux DRM card0 mem_info_vram_total' : 'Windows DXGI DedicatedVideoMemory'
+      };
+      report.telemetry = {
+        provider: 'nvidia-smi selected adapter 0',
+        samples: [
+          { at_ms: 0, phase: 'before run', temperature_c: 52, core_clock_mhz: 1420, memory_clock_mhz: 7000 },
+          { at_ms: 8420, phase: 'after run', temperature_c: 61, core_clock_mhz: 1510, memory_clock_mhz: 7000 }
+        ],
+        unavailable_reason: null
+      };
+      report.notes = ['Controlled schema fixture; never published as hardware evidence.'];
+      const result = {
+        status: 'pass', coverage_percent: 93.75, mismatches: 0, tested_mib: 11520,
+        resident_mib: 11520, resident_allocations: 180
+      };
+      const inventoryPath = join(dir, 'inventory.json');
+      const resultPath = join(dir, 'result.json');
+      const reportPath = join(dir, `hardware-${platform}-report.json`);
+      const htmlPath = join(dir, `hardware-${platform}-report.html`);
+      const binaryPath = join(dir, platform === 'windows' ? 'vram-fieldtest.exe' : 'vram-fieldtest');
+      const evidencePath = join(dir, `hardware-${platform}-evidence.json`);
+      writeFileSync(inventoryPath, JSON.stringify([report.adapter]));
+      writeFileSync(resultPath, JSON.stringify(result));
+      writeFileSync(reportPath, JSON.stringify(report));
+      writeFileSync(htmlPath, `<title>VRAM Field Test report</title><p>Tested 11520 MiB. Detected VRAM on this host: 12288 MiB. Coverage from this run: 93.8%.</p><p>solid AA solid 55 address XOR</p>`);
+      writeFileSync(binaryPath, `fixture-${platform}`);
+      const command = platform === 'linux'
+        ? './vram-fieldtest run --yes --adapter 0 --coverage 90 --window-mib 1024 --seconds 7200 --output ./output --json'
+        : '.\\vram-fieldtest.exe run --yes --adapter 0 --coverage 90 --window-mib 1024 --seconds 7200 --output .\\output --json';
+      const asset = platform === 'linux' ? 'vram-fieldtest-linux-x86_64.tar.gz' : 'vram-fieldtest-windows-x86_64.zip';
+      const common = [
+        'scripts/hardware-evidence.py', 'bundle', '--platform', platform, '--source-commit', sourceCommit,
+        '--release-version', '0.1.8', '--runner-environment', 'self-hosted',
+        '--inventory-command', platform === 'linux' ? './vram-fieldtest inspect --json' : '.\\vram-fieldtest.exe inspect --json', '--command', command,
+        '--binary', binaryPath, '--binary-asset', asset, '--inventory', inventoryPath, '--result', resultPath,
+        '--report', reportPath, '--html', htmlPath, '--output', evidencePath
+      ];
+      execFileSync('python3', common, { stdio: 'pipe' });
+      execFileSync('python3', [
+        'scripts/hardware-evidence.py', 'validate', '--evidence', evidencePath, '--platform', platform,
+        '--source-commit', sourceCommit, '--release-version', '0.1.8', '--binary', binaryPath
+      ], { stdio: 'pipe' });
+
+      const software = structuredClone(report);
+      software.adapter.device_type = 'software';
+      software.adapter.detected_vram_mib = null;
+      software.adapter.source = 'not exposed by the operating-system driver';
+      software.limits.detected_vram_mib = null;
+      software.limits.coverage_percent = null;
+      software.limits.coverage_target_percent = null;
+      software.limits.thermal_limit_c = null;
+      software.telemetry = { provider: 'not available for selected adapter', samples: [], unavailable_reason: 'missing' };
+      writeFileSync(inventoryPath, JSON.stringify([software.adapter]));
+      writeFileSync(reportPath, JSON.stringify(software));
+      const rejected = spawnSync('python3', [
+        'scripts/hardware-evidence.py', 'bundle', '--platform', platform, '--source-commit', sourceCommit,
+        '--release-version', '0.1.8', '--runner-environment', 'self-hosted',
+        '--inventory-command', platform === 'linux' ? './vram-fieldtest inspect --json' : '.\\vram-fieldtest.exe inspect --json',
+        '--command', `${command} --allow-software --mib 4`, '--binary', binaryPath, '--binary-asset', asset,
+        '--inventory', inventoryPath, '--result', resultPath, '--report', reportPath, '--html', htmlPath,
+        '--output', evidencePath
+      ], { encoding: 'utf8' });
+      assert.equal(rejected.status, 1);
+      assert.match(rejected.stderr, /selected adapter is not a physical GPU/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
 });
 
 test('regression: native archive packaging is byte reproducible', () => {

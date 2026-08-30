@@ -31,7 +31,7 @@ jobs:
       - name: Test, build, and strict lint
         run: npm test && npm run build && npm run lint
 
-  protocol:
+  protocol_smoke:
     needs: verify
     strategy:
       fail-fast: false
@@ -50,7 +50,7 @@ jobs:
       - name: Install Linux software Vulkan driver
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
-      - name: Run the real retained-allocation protocol
+      - name: Run the software-renderer protocol smoke
         shell: bash
         env:
           WGPU_BACKEND: ${{ matrix.backend }}
@@ -68,7 +68,7 @@ jobs:
           path: protocol-${{ matrix.label }}.json
 
   build:
-    needs: [verify, protocol]
+    needs: [verify, protocol_smoke]
     strategy:
       fail-fast: false
       matrix:
@@ -148,32 +148,158 @@ jobs:
             vram-fieldtest-*
             vram-fieldtest_*
 
-  publish:
+  hardware_linux:
     needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: [self-hosted, Linux, X64, physical-gpu]
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x86_64
+          path: hardware
+      - name: Test at least 90 percent of detected VRAM on physical Linux hardware
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -xzf hardware/vram-fieldtest-linux-x86_64.tar.gz -C hardware
+          chmod +x hardware/vram-fieldtest
+          hardware/vram-fieldtest inspect --json > hardware/inventory.json
+          adapter="$(python3 scripts/hardware-evidence.py select-adapter --platform linux --inventory hardware/inventory.json)"
+          command="./vram-fieldtest run --yes --adapter ${adapter} --coverage 90 --window-mib 1024 --seconds 7200 --output ./output --json"
+          (
+            cd hardware
+            ./vram-fieldtest run --yes --adapter "$adapter" --coverage 90 --window-mib 1024 --seconds 7200 --output ./output --json > result.json
+            cp output/report.json hardware-linux-report.json
+            cp output/report.html hardware-linux-report.html
+          )
+          version="${GITHUB_REF_NAME#v}"
+          python3 scripts/hardware-evidence.py bundle \
+            --platform linux \
+            --source-commit "$GITHUB_SHA" \
+            --release-version "$version" \
+            --runner-environment "${{ runner.environment }}" \
+            --inventory-command "./vram-fieldtest inspect --json" \
+            --command "$command" \
+            --binary hardware/vram-fieldtest \
+            --binary-asset vram-fieldtest-linux-x86_64.tar.gz \
+            --inventory hardware/inventory.json \
+            --result hardware/result.json \
+            --report hardware/hardware-linux-report.json \
+            --html hardware/hardware-linux-report.html \
+            --output hardware/hardware-linux-evidence.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hardware-linux
+          if-no-files-found: error
+          path: |
+            hardware/hardware-linux-evidence.json
+            hardware/hardware-linux-report.json
+            hardware/hardware-linux-report.html
+
+  hardware_windows:
+    needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: [self-hosted, Windows, X64, physical-gpu]
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x86_64
+          path: hardware
+      - name: Test at least 90 percent of detected VRAM on physical Windows hardware
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Expand-Archive hardware/vram-fieldtest-windows-x86_64.zip hardware/unpacked
+          hardware/unpacked/vram-fieldtest.exe inspect --json | Set-Content -Encoding utf8 hardware/inventory.json
+          $adapter = python scripts/hardware-evidence.py select-adapter --platform windows --inventory hardware/inventory.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $command = ".\vram-fieldtest.exe run --yes --adapter $adapter --coverage 90 --window-mib 1024 --seconds 7200 --output .\output --json"
+          Push-Location hardware/unpacked
+          .\vram-fieldtest.exe run --yes --adapter $adapter --coverage 90 --window-mib 1024 --seconds 7200 --output .\output --json | Set-Content -Encoding utf8 ../result.json
+          if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
+          Copy-Item output/report.json ../hardware-windows-report.json
+          Copy-Item output/report.html ../hardware-windows-report.html
+          Pop-Location
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          python scripts/hardware-evidence.py bundle `
+            --platform windows `
+            --source-commit "$env:GITHUB_SHA" `
+            --release-version "$version" `
+            --runner-environment "${{ runner.environment }}" `
+            --inventory-command ".\vram-fieldtest.exe inspect --json" `
+            --command "$command" `
+            --binary hardware/unpacked/vram-fieldtest.exe `
+            --binary-asset vram-fieldtest-windows-x86_64.zip `
+            --inventory hardware/inventory.json `
+            --result hardware/result.json `
+            --report hardware/hardware-windows-report.json `
+            --html hardware/hardware-windows-report.html `
+            --output hardware/hardware-windows-evidence.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hardware-windows
+          if-no-files-found: error
+          path: |
+            hardware/hardware-windows-evidence.json
+            hardware/hardware-windows-report.json
+            hardware/hardware-windows-report.html
+
+  publish:
+    needs: [build, hardware_linux, hardware_windows]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
+          pattern: linux-*
           path: release
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: windows-*
+          path: release
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: macos-*
+          path: release
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hardware-*
+          path: evidence
           merge-multiple: true
       - name: Create checksums and release manifest
         id: metadata
         shell: bash
         run: |
-          cat release/*.sha256 | tr -d '\r' | LC_ALL=C sort -k2 > release/SHA256SUMS
           version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
           tag="v${version}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}"
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           commit="$(git rev-parse HEAD)"
+          python3 scripts/hardware-evidence.py validate --evidence evidence/hardware-linux-evidence.json --platform linux --source-commit "$commit" --release-version "$version"
+          python3 scripts/hardware-evidence.py validate --evidence evidence/hardware-windows-evidence.json --platform windows --source-commit "$commit" --release-version "$version"
+          cp evidence/hardware-* release/
           jq -n --arg version "$version" --arg source_commit "$commit" \
-            --slurpfile linux release/protocol-linux.json --slurpfile windows release/protocol-windows.json \
-            '{version:$version,source_commit:$source_commit,protocol_runs:[$linux[0],$windows[0]]}' > release/PROVENANCE.json
+            --slurpfile linux release/hardware-linux-evidence.json --slurpfile windows release/hardware-windows-evidence.json \
+            '{version:$version,source_commit:$source_commit,evidence_kind:"physical-gpu-release-matrix",hardware_runs:[$linux[0],$windows[0]]}' > release/PROVENANCE.json
           jq -n --arg version "$version" --arg source_commit "$commit" --arg base "$base" \
             '{version:$version,source_commit:$source_commit,assets:{"linux-x86_64":($base+"/vram-fieldtest-linux-x86_64.tar.gz"),"linux-deb":($base+"/vram-fieldtest_"+$version+"_amd64.deb"),"linux-rpm":($base+"/vram-fieldtest-"+$version+"-1.x86_64.rpm"),"windows-x86_64":($base+"/vram-fieldtest-windows-x86_64.zip"),"macos-x86_64":($base+"/vram-fieldtest-macos-x86_64.tar.gz"),"macos-aarch64":($base+"/vram-fieldtest-macos-aarch64.tar.gz"),"macos-x86_64-pkg":($base+"/vram-fieldtest-macos-x86_64.pkg"),"macos-aarch64-pkg":($base+"/vram-fieldtest-macos-aarch64.pkg")}}' > release/latest.json
+          (cd release && find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sed 's#  \./#  #') > release/SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.metadata.outputs.tag }}
@@ -187,8 +313,22 @@ jobs:
           curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/PROVENANCE.json" -o published-check/PROVENANCE.json
           curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/latest.json" -o published-check/latest.json
           curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/vram-fieldtest-linux-x86_64.tar.gz" -o published-check/vram-fieldtest-linux-x86_64.tar.gz
+          curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/vram-fieldtest-windows-x86_64.zip" -o published-check/vram-fieldtest-windows-x86_64.zip
+          for platform in linux windows; do
+            curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/hardware-${platform}-evidence.json" -o "published-check/hardware-${platform}-evidence.json"
+            curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/hardware-${platform}-report.json" -o "published-check/hardware-${platform}-report.json"
+            curl -fsSL --retry 5 --retry-delay 3 "${{ steps.metadata.outputs.base }}/hardware-${platform}-report.html" -o "published-check/hardware-${platform}-report.html"
+          done
           (cd published-check && grep ' vram-fieldtest-linux-x86_64.tar.gz$' SHA256SUMS | sha256sum -c -)
+          (cd published-check && grep ' vram-fieldtest-windows-x86_64.zip$' SHA256SUMS | sha256sum -c -)
+          for file in PROVENANCE.json latest.json hardware-linux-evidence.json hardware-linux-report.json hardware-linux-report.html hardware-windows-evidence.json hardware-windows-report.json hardware-windows-report.html; do
+            (cd published-check && grep " ${file}$" SHA256SUMS | sha256sum -c -)
+          done
           tar -xzf published-check/vram-fieldtest-linux-x86_64.tar.gz -C published-check
+          mkdir published-check/windows
+          unzip -q published-check/vram-fieldtest-windows-x86_64.zip -d published-check/windows
           jq -e --arg commit "$GITHUB_SHA" '.source_commit == $commit' published-check/PROVENANCE.json >/dev/null
-          jq -e --arg commit "$GITHUB_SHA" '(.protocol_runs | length) == 2 and (.protocol_runs | all(.[]; .source_commit == $commit and .evidence_kind == "software-renderer smoke only; not a physical VRAM run" and .result.status == "pass" and .result.tested_mib == 4 and .report.residency.retained_through_patterns == true))' published-check/PROVENANCE.json >/dev/null
+          jq -e --arg commit "$GITHUB_SHA" '.evidence_kind == "physical-gpu-release-matrix" and (.hardware_runs | length) == 2 and ([.hardware_runs[].platform] | sort) == ["linux","windows"] and (.hardware_runs | all(.[]; .source_commit == $commit and .evidence_kind == "physical-gpu-completed-run" and .report.limits.coverage_percent >= 90 and .report.limits.detected_vram_mib > 0 and .report.limits.thermal_limit_c == 85 and (.report.patterns | length) == 3 and ([.report.patterns[].status == "pass"] | all)))' published-check/PROVENANCE.json >/dev/null
+          python3 scripts/hardware-evidence.py validate --evidence published-check/hardware-linux-evidence.json --platform linux --source-commit "$GITHUB_SHA" --release-version "${GITHUB_REF_NAME#v}" --binary published-check/vram-fieldtest
+          python3 scripts/hardware-evidence.py validate --evidence published-check/hardware-windows-evidence.json --platform windows --source-commit "$GITHUB_SHA" --release-version "${GITHUB_REF_NAME#v}" --binary published-check/windows/vram-fieldtest.exe
           jq -e --arg commit "$GITHUB_SHA" --arg version "${GITHUB_REF_NAME#v}" '.source_commit == $commit and .version == $version and ([.assets[] | contains("/releases/download/v" + $version + "/")] | all)' published-check/latest.json >/dev/null
