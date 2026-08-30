@@ -1,77 +1,64 @@
-# Repair 10 handoff
+# Verification 11 handoff — FAIL
 
-**Base verifier report:** `.factory/verification-10.md` at
-`56f5a272c8ffd0d86c9d36a35572dcaba61face0`
+**Candidate:** `0d020bbf1a9da96aec0955430a63960dfad48b76`
 
-**Release candidate:** `v0.1.9` from the final `main` commit for this repair.
+**Tag:** `v0.1.9`
 
-## What changed
+**Live URL:** <https://vram-fieldtest.sociobot.in>
 
-- Reproduced the verifier's stale-release failure before changing code: a
-  built `v0.1.8` site identified the old `v0.1.8` tag commit as its release
-  source while its `site_commit` was the newer candidate.
-- Bumped every release-facing version to `0.1.9` and added a regression that
-  builds the site and requires `tag`, `source_commit`, and `site_commit` to
-  be the current candidate. Installer scripts, service-worker cache, sample,
-  release fixtures, package metadata, and package-manager manifests are kept
-  in the same version contract.
-- Reworded host-coverage copy and provenance. The CLI detects and tests the
-  GPU on the user's host. Coverage evidence comes only from completed user
-  runs on those hosts. The product provides no physical Windows or Linux GPU
-  coverage claim; CI software-renderer jobs are package checks only.
-- Added `@claim:host-evidence-scope` browser/documentation regression coverage
-  for that scope and retained the completed user-host evidence validator.
-- Kept Windows and macOS downloads explicitly unsigned. SHA-256 checks verify
-  file integrity and are not presented as code signing.
-- Kept Report Kit checkout fail-soft while the Sociobot product mapping is
-  environment-gated. The free core test and report files remain available.
-- Ran a non-publishing native GitHub Actions rehearsal and used its artifacts
-  to pin the `v0.1.9` Windows, Intel macOS, and Apple Silicon macOS package
-  manager checksums.
+**Result:** **FAIL — do not accept as complete.**
 
-## Verification
+See [verification-11.md](/work/repo/.factory/verification-11.md) for the full
+evidence.
 
-- `npm ci` — passed with 0 vulnerabilities.
-- `npm test` — passed: 31 Node/integration checks (one Windows-only local
-  PowerShell fixture skipped), 13 Rust unit tests, and 29 Playwright desktop
-  and mobile checks. This includes keyboard, 390 px layout, 200% text,
-  reduced motion, axe serious/critical checks, privacy, offline reload,
-  update handling, response behavior, checkout gating, and the new scope and
-  release-identity regressions.
-- `npm run lint` — passed: JavaScript/Python/shell syntax, Rust formatting,
-  and Clippy with warnings denied.
-- `npm run build` — passed and produced `dist/site` plus
-  `target/release/vram-fieldtest`.
-- `cargo package --locked --allow-dirty` — passed and produced
-  `target/package/vram-fieldtest-0.1.9.crate`.
-- Fresh consumer install from that crate — passed. The installed binary
-  reported `vram-fieldtest 0.1.9`; its demo wrote local JSON and HTML output;
-  a 12 GiB/90% plan requested 11,060 MiB over 11 windows.
-- GitHub Actions rehearsal
-  [33294717372](https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33294717372)
-  passed on clean Linux verification, Linux and Windows software-renderer
-  package protocol checks, Windows, Linux, macOS x86_64, and macOS arm64
-  native builds. It did not publish a release.
+## Blocking result
 
-## Scope and operator actions
+The candidate now deploys and packages consistently, but it does not satisfy
+the brief's required physical test matrix. Release `v0.1.9` has no completed
+physical Windows or Linux report proving at least 90% of detected VRAM. Its
+provenance says it is a package-only release, and the README explicitly says
+there is no physical Windows/Linux coverage evidence.
 
-- The product does not claim factory-provided physical Windows or Linux GPU
-  coverage. User-host evidence must be a completed report from the host that
-  ran the tool and is validated by `scripts/hardware-evidence.py`.
-- Windows and macOS installers are unsigned. Signing/notarization needs the
-  owner's platform certificates; checksum verification remains in place.
-- Report Kit checkout is intentionally unavailable until an operator configures
-  the Sociobot product mapping and verifies a hosted one-time purchase.
+Additional P1 gaps are incomplete safe telemetry on non-NVIDIA Windows and
+macOS hosts, unsigned Windows/macOS packages versus the researched brief, and
+an unavailable one-time Report Kit checkout.
 
-## Publish and deploy
+## What passed
 
-Tag the final candidate as `v0.1.9`; `.github/workflows/release.yml` then
-publishes the all-platform release assets, `SHA256SUMS`, `latest.json`, and
-`PROVENANCE.json`. Build the site after that tag so `release.json` records the
-same tag commit, then deploy `dist/site` with:
+- All 28 registered claim commands after the documented `npm ci`.
+- Full `npm test`, `npm run lint`, `npm run build`, all-target Cargo test/check,
+  Cargo package, and a clean consumer install.
+- Candidate/tag/release/live identity and byte-for-byte deployed site match.
+- Published checksum verification and live Linux one-line installation.
+- Desktop, 390 px mobile, keyboard, focus, reduced motion, offline reload,
+  service-worker update, privacy request logging, headers, caching, and all
+  discovered links.
+- Zero serious/critical axe findings and no browser console/page errors.
+- Lighthouse 100 performance / 100 accessibility / 100 best practices / 100
+  SEO; LCP 1.47 s and CLS 0.
+- Live allowance: eight license checks per address per ten minutes; request 9
+  returned 429 with `Retry-After: 599`.
+
+## Commands to reproduce
 
 ```sh
-npm run build:site
-/opt/fleet/lib/deploy-static.sh vram-fieldtest dist/site
+npm ci
+npm test
+npm run lint
+npm run build
+cargo test --locked --all-targets
+cargo check --locked --all-targets
+cargo package --locked --allow-dirty
 npm run verify:live -- https://vram-fieldtest.sociobot.in
 ```
+
+## Operator next steps
+
+1. Run the tagged binary on physical Windows and Linux GPUs and publish
+   reproducible completed reports with ≥90% detected-VRAM coverage.
+2. Add safe non-NVIDIA Windows/macOS telemetry support.
+3. Add platform signing certificates and sign the Windows/macOS packages.
+4. Configure the Sociobot product mapping and verify one-time Report Kit
+   checkout before enabling its buy link.
+
+No product code was modified during this verification.
