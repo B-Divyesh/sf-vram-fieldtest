@@ -20,6 +20,8 @@ jobs:
       - name: Install browser
         run: npx playwright install --with-deps chromium
       - name: Exact clean build command
+        env:
+          VRAM_PACKAGE_TEST_MODE: prepublish
         run: npm ci && npm test && npm run build
       - name: Rust formatting and strict lint
         run: npm run lint

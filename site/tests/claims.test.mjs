@@ -10,6 +10,42 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { createLicenseHandler, ALLOWANCE, WINDOW_SECONDS } = require('../../api/license-verify/index.js');
+const artifactCache = new Map();
+
+async function publicArtifact(url) {
+  if (!artifactCache.has(url)) {
+    artifactCache.set(url, fetch(url, { headers: { 'User-Agent': 'vram-fieldtest-claim-check' } }).then(async response => {
+      assert.equal(response.status, 200, `published asset did not return 200: ${url}`);
+      return Buffer.from(await response.arrayBuffer());
+    }));
+  }
+  return artifactCache.get(url);
+}
+
+async function verifyPublishedArchive(url, expectedHash, kind) {
+  if (process.env.VRAM_PACKAGE_TEST_MODE === 'prepublish') {
+    assert.match(url, /^https:\/\/github\.com\/B-Divyesh\/sf-vram-fieldtest\/releases\/download\/v\d+\.\d+\.\d+\//);
+    assert.match(expectedHash, /^[A-Fa-f0-9]{64}$/);
+    return;
+  }
+  const bytes = await publicArtifact(url);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), expectedHash.toLowerCase());
+  const dir = mkdtempSync(join(tmpdir(), `vram-${kind}-consumer-`));
+  const archive = join(dir, kind === 'macos' ? 'tool.tar.gz' : 'tool.zip');
+  try {
+    writeFileSync(archive, bytes);
+    if (kind === 'macos') {
+      execFileSync('tar', ['-xzf', archive, '-C', dir]);
+      const header = readFileSync(join(dir, 'vram-fieldtest')).subarray(0, 4).toString('hex');
+      assert.ok(['cffaedfe', 'feedfacf', 'cafebabe'].includes(header), `unexpected macOS executable header: ${header}`);
+    } else {
+      execFileSync('unzip', ['-q', archive, '-d', dir]);
+      assert.equal(readFileSync(join(dir, 'vram-fieldtest.exe')).subarray(0, 2).toString('ascii'), 'MZ');
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 test('regression: package lock is synchronized and supports npm ci', () => {
   const dir = mkdtempSync(join(tmpdir(), 'vram-lock-'));
@@ -27,12 +63,18 @@ test('regression: package lock is synchronized and supports npm ci', () => {
   }
 });
 
-test('regression: a versioned site release identity is the current candidate commit', () => {
+test('regression: release identity separates the tagged CLI from later site documentation', () => {
   execFileSync('npm', ['run', 'build:site'], { stdio: 'pipe' });
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
   const identity = JSON.parse(readFileSync('dist/site/release.json', 'utf8'));
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  assert.deepEqual(identity, { tag: `v${pkg.version}`, source_commit: head, site_commit: head });
+  let tagged;
+  try {
+    tagged = execFileSync('git', ['rev-parse', `${identity.tag}^{commit}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    tagged = head;
+  }
+  assert.deepEqual(identity, { tag: `v${pkg.version}`, source_commit: tagged, site_commit: head });
   assert.match(readFileSync('site/src/app.js', 'utf8'), new RegExp(`releaseTag = 'v${pkg.version}'`));
   assert.match(readFileSync('site/public/install.sh', 'utf8'), new RegExp(`expected=\\"v${pkg.version}\\"`));
   assert.match(readFileSync('site/public/install.ps1', 'utf8'), new RegExp(`\\$expected = 'v${pkg.version}'`));
@@ -150,7 +192,7 @@ test('@claim:safe-non-nvidia-default inspect exposes safe default status for non
   const output = execFileSync('cargo', ['test', '--quiet', 'tests::non_nvidia_inspection_blocks_default_run_without_temperature', '--', '--exact'], { encoding: 'utf8' });
   assert.match(output, /1 passed/);
   const readme = readFileSync('README.md', 'utf8');
-  assert.match(readme, /For every GPU vendor, `inspect` reports whether the default thermal stop is ready/);
+  assert.match(readme, /Safe hardware runs currently require NVIDIA SMI or Linux DRM temperature data/);
   assert.match(readme, /blocked before test-memory allocation/);
 });
 
@@ -176,12 +218,12 @@ test('@claim:installer-checksum shell and PowerShell installers verify SHA-256 b
   const sourceCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const server = createServer((req, res) => {
     const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.10', assets: [
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.11', assets: [
       { browser_download_url: `${base}/vram-fieldtest-linux-x86_64.tar.gz` },
       { browser_download_url: `${base}/SHA256SUMS` },
       { browser_download_url: `${base}/PROVENANCE.json` }
     ] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.10', source_commit: sourceCommit }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.11', source_commit: sourceCommit }, null, 2));
     // GitHub may return minified JSON; the installer must not depend on a line
     // beginning with the top-level sha field.
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: sourceCommit, commit: { tree: { sha: 'b'.repeat(40) } } }));
@@ -215,6 +257,37 @@ test('@claim:installer-checksum shell and PowerShell installers verify SHA-256 b
   }
 });
 
+test('@claim:homebrew-install Homebrew formula resolves both current macOS archives', async () => {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  const formula = readFileSync('Formula/vram-fieldtest.rb', 'utf8');
+  const artifacts = [...formula.matchAll(/url "([^"]+)"\s+sha256 "([a-f0-9]{64})"/g)];
+  assert.equal(artifacts.length, 2);
+  assert.match(readFileSync('README.md', 'utf8'), /brew tap B-Divyesh\/sf-vram-fieldtest https:\/\/github\.com\/B-Divyesh\/sf-vram-fieldtest/);
+  for (const [, url, hash] of artifacts) {
+    assert.match(url, new RegExp(`/releases/download/v${pkg.version.replaceAll('.', '\\.')}\/vram-fieldtest-macos-(aarch64|x86_64)\\.tar\\.gz$`));
+    await verifyPublishedArchive(url, hash, 'macos');
+  }
+});
+
+test('@claim:scoop-install Scoop bucket resolves the current checksummed Windows archive', async () => {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  const manifest = JSON.parse(readFileSync('bucket/vram-fieldtest.json', 'utf8'));
+  assert.equal(manifest.version, pkg.version);
+  assert.equal(manifest.bin, 'vram-fieldtest.exe');
+  await verifyPublishedArchive(manifest.url, manifest.hash, 'windows');
+});
+
+test('@claim:winget-manifest winget submission manifest resolves the current checksummed Windows archive', async () => {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  const manifest = readFileSync('winget/vram-fieldtest/vram-fieldtest.yaml', 'utf8');
+  const version = manifest.match(/^PackageVersion:\s*(\S+)/m)?.[1];
+  const url = manifest.match(/^\s*InstallerUrl:\s*(\S+)/m)?.[1];
+  const hash = manifest.match(/^\s*InstallerSha256:\s*([A-Fa-f0-9]{64})/m)?.[1];
+  assert.equal(version, pkg.version);
+  assert.ok(url && hash, 'winget installer URL and SHA-256 are required');
+  await verifyPublishedArchive(url, hash, 'windows');
+});
+
 test('regression: Windows PowerShell installer copies only a checksum-matching archive', { skip: process.platform !== 'win32' }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vram-powershell-installer-'));
   const stage = join(dir, 'stage');
@@ -230,7 +303,7 @@ test('regression: Windows PowerShell installer copies only a checksum-matching a
     const base = `http://127.0.0.1:${server.address().port}`;
     if (req.url === '/release') {
       res.setHeader('Content-Type', 'application/json');
-      return res.end(JSON.stringify({ tag_name: 'v0.1.10', assets: [
+      return res.end(JSON.stringify({ tag_name: 'v0.1.11', assets: [
       { name: 'vram-fieldtest-windows-x86_64.zip', browser_download_url: `${base}/tool.zip` },
       { name: 'SHA256SUMS', browser_download_url: `${base}/SHA256SUMS` },
       { name: 'PROVENANCE.json', browser_download_url: `${base}/PROVENANCE.json` }
@@ -238,7 +311,7 @@ test('regression: Windows PowerShell installer copies only a checksum-matching a
     }
     if (req.url === '/identity') {
       res.setHeader('Content-Type', 'application/json');
-      return res.end(JSON.stringify({ tag: 'v0.1.10', source_commit: sourceCommit }));
+      return res.end(JSON.stringify({ tag: 'v0.1.11', source_commit: sourceCommit }));
     }
     if (req.url === '/commit') {
       res.setHeader('Content-Type', 'application/json');
@@ -314,8 +387,8 @@ test('installer refuses a stale release instead of installing the wrong CLI', as
 test('regression: installer refuses the expected tag when it points at an ancestor commit', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vram-ancestor-installer-'));
   const server = createServer((req, res) => {
-    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.10', assets: [] }, null, 2));
-    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.10', source_commit: 'a'.repeat(40) }, null, 2));
+    if (req.url === '/release') return res.end(JSON.stringify({ tag_name: 'v0.1.11', assets: [] }, null, 2));
+    if (req.url === '/identity') return res.end(JSON.stringify({ tag: 'v0.1.11', source_commit: 'a'.repeat(40) }, null, 2));
     if (req.url === '/commit') return res.end(JSON.stringify({ sha: 'b'.repeat(40) }, null, 2));
     res.writeHead(404).end();
   });
@@ -452,7 +525,7 @@ test('@claim:host-evidence-bundle user-host evidence validates a completed local
       const asset = platform === 'linux' ? 'vram-fieldtest-linux-x86_64.tar.gz' : 'vram-fieldtest-windows-x86_64.zip';
       const common = [
         'scripts/hardware-evidence.py', 'bundle', '--platform', platform, '--source-commit', sourceCommit,
-        '--release-version', '0.1.10', '--runner-environment', 'user supplied fixture',
+        '--release-version', '0.1.11', '--runner-environment', 'user supplied fixture',
         '--inventory-command', platform === 'linux' ? './vram-fieldtest inspect --json' : '.\\vram-fieldtest.exe inspect --json', '--command', command,
         '--binary', binaryPath, '--binary-asset', asset, '--inventory', inventoryPath, '--result', resultPath,
         '--report', reportPath, '--html', htmlPath, '--output', evidencePath
@@ -460,7 +533,7 @@ test('@claim:host-evidence-bundle user-host evidence validates a completed local
       execFileSync('python3', common, { stdio: 'pipe' });
       execFileSync('python3', [
         'scripts/hardware-evidence.py', 'validate', '--evidence', evidencePath, '--platform', platform,
-        '--source-commit', sourceCommit, '--release-version', '0.1.10', '--binary', binaryPath
+        '--source-commit', sourceCommit, '--release-version', '0.1.11', '--binary', binaryPath
       ], { stdio: 'pipe' });
 
       const software = structuredClone(report);
@@ -476,7 +549,7 @@ test('@claim:host-evidence-bundle user-host evidence validates a completed local
       writeFileSync(reportPath, JSON.stringify(software));
       const rejected = spawnSync('python3', [
         'scripts/hardware-evidence.py', 'bundle', '--platform', platform, '--source-commit', sourceCommit,
-        '--release-version', '0.1.10', '--runner-environment', 'user supplied fixture',
+        '--release-version', '0.1.11', '--runner-environment', 'user supplied fixture',
         '--inventory-command', platform === 'linux' ? './vram-fieldtest inspect --json' : '.\\vram-fieldtest.exe inspect --json',
         '--command', `${command} --allow-software --mib 4`, '--binary', binaryPath, '--binary-asset', asset,
         '--inventory', inventoryPath, '--result', resultPath, '--report', reportPath, '--html', htmlPath,
@@ -529,9 +602,15 @@ test('hashed site assets receive the immutable cache route', () => {
   assert.match(index, /\/assets\/styles\.[a-f0-9]{12}\.css/);
   assert.equal(existsSync('dist/site/app.js'), false);
   assert.equal(existsSync('dist/site/styles.css'), false);
+  assert.equal(existsSync('dist/site/hero-vram-small.webp'), false);
+  const builtAppName = index.match(/\/assets\/(app\.[a-f0-9]{12}\.js)/)[1];
+  const builtApp = readFileSync(`dist/site/assets/${builtAppName}`, 'utf8');
+  const heroPath = builtApp.match(/\/assets\/(hero-vram\.[a-f0-9]{12}\.webp)/)[1];
+  assert.ok(existsSync(`dist/site/assets/${heroPath}`));
   const worker = readFileSync('dist/site/sw.js', 'utf8');
   assert.match(worker, /\/assets\/app\.[a-f0-9]{12}\.js/);
   assert.match(worker, /\/assets\/styles\.[a-f0-9]{12}\.css/);
+  assert.match(worker, /\/assets\/hero-vram\.[a-f0-9]{12}\.webp/);
   assert.match(readFileSync('staticwebapp.config.json', 'utf8'), /"\/assets\/\*"[\s\S]*immutable/);
   const identity = JSON.parse(readFileSync('dist/site/release.json', 'utf8'));
   assert.equal(identity.tag, `v${JSON.parse(readFileSync('package.json', 'utf8')).version}`);

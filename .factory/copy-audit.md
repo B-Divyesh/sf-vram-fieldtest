@@ -1,4 +1,4 @@
-# Copy audit — 2026-08-30
+# Copy audit — 2026-09-05
 
 The first screen reads in one breath: “Test GPU memory before money changes
 hands. For buyers, resellers, and repair benches who need a clear memory test
@@ -14,7 +14,7 @@ and what to do first.
 | Runs locally with no account. | 5 | `no-account` |
 | Detects and tests the GPU on the host where you run it. | 11 | `host-evidence-scope` |
 | Free core test. | 3 | `report-kit-operator-gate` |
-| Report Kit checkout is not available yet. | 7 | `report-kit-operator-gate` |
+| Report Kit costs $19 once when checkout opens. | 8 | `report-kit-operator-gate` |
 | Sample report | 2 | — |
 | Each run writes a JSON record and a print-ready HTML report. | 11 | `demo-report` |
 | The report lists the card, checks, mismatches, and memory tested. | 10 | `demo-report` |
@@ -23,8 +23,10 @@ and what to do first.
 | Confirm, choose an amount, then check memory. | 7 | — |
 | Save a local JSON and print-ready report with the result and limits. | 12 | `demo-report` |
 | Run inspect before a hardware test. | 6 | `safe-non-nvidia-default` |
-| For every GPU vendor, it reports whether the automatic thermal stop is ready. | 13 | `safe-non-nvidia-default` |
-| If temperature is unavailable, the default run stops before test-memory allocation. | 11 | `safe-non-nvidia-default` |
+| It reports whether the automatic thermal stop is ready for each detected card. | 13 | `safe-non-nvidia-default` |
+| Safe hardware runs currently require NVIDIA SMI or Linux DRM temperature data. | 12 | `safe-non-nvidia-default` |
+| Other Windows and macOS cards can use inspect, plan, and demo. | 11 | `safe-non-nvidia-default` |
+| Their default memory run stays blocked. | 6 | `safe-non-nvidia-default` |
 | The unsafe override disables this automatic stop. | 7 | `selected-thermal-stop` |
 | When active, the guard stops at 85°C or if the reading disappears. | 12 | `selected-thermal-stop` |
 | The test never changes clocks, voltages, or drivers. | 8 | `non-invasive` |
@@ -33,6 +35,8 @@ and what to do first.
 | The site saves a license token only after you add one. | 11 | `license-storage` |
 | Windows and macOS packages are unsigned. | 6 | `unsigned-builds` |
 | SHA-256 checks verify bytes, not publisher identity. | 7 | `unsigned-builds` |
+| Choose the Mac build that matches your processor. | 8 | `release-download` |
+| Report Kit — $19 one time | 5 | `report-kit-operator-gate` |
 | Report Kit turns a local report into printable covers and batch labels. | 11 | `report-kit-output` |
 | Checkout is unavailable until an operator configures its Sociobot product mapping. | 11 | `report-kit-operator-gate` |
 | The core test and report files stay free. | 8 | `report-kit-operator-gate` |

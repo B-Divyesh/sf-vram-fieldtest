@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 
@@ -32,6 +33,11 @@ try {
 
   const desktop = await browser.newPage({ viewport: { width: 1366, height: 900 } });
   await desktop.goto(base.href, { waitUntil: 'networkidle' });
+  const heroUrl = await desktop.locator('.hero-art img').getAttribute('src');
+  assert.match(heroUrl, /^\/assets\/hero-vram\.[a-f0-9]{12}\.webp$/, 'hero image is not fingerprinted');
+  const heroResponse = await fetch(new URL(heroUrl, base));
+  assert.equal(heroResponse.status, 200, 'hero image response');
+  assert.match(heroResponse.headers.get('cache-control') || '', /max-age=31536000.*immutable/, 'hero image is not immutable-cached');
   await desktop.keyboard.press('Tab');
   assert.equal(await desktop.evaluate(() => document.activeElement?.textContent?.trim()), 'Skip to content');
   await desktop.keyboard.press('Enter');
@@ -112,11 +118,13 @@ try {
   const tagged = await commitResponse.json();
   assert.equal(identity.source_commit, tagged.sha, 'deployed source does not match release tag');
   assert.match(identity.site_commit, /^[a-f0-9]{40}$/, 'deployed site commit is missing');
-  const mainResponse = await fetch('https://api.github.com/repos/B-Divyesh/sf-vram-fieldtest/commits/main', { headers: githubHeaders });
-  assert.equal(mainResponse.status, 200);
-  const main = await mainResponse.json();
-  assert.equal(identity.site_commit, main.sha, 'deployed site does not match main');
-  summary.identity = identity;
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const ancestor = execFileSync('git', ['merge-base', '--is-ancestor', identity.site_commit, head], { encoding: 'utf8' });
+  assert.equal(ancestor, '', 'deployed site commit is not in the current checkout history');
+  const changed = identity.site_commit === head ? [] : execFileSync('git', ['diff', '--name-only', `${identity.site_commit}..${head}`], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+  const implementationChanges = changed.filter(file => !file.startsWith('.factory/') && !file.startsWith('artifacts/'));
+  assert.deepEqual(implementationChanges, [], `live deployment is behind implementation files: ${implementationChanges.join(', ')}`);
+  summary.identity = { ...identity, checked_against: head, documentation_only_changes: changed };
   assert.deepEqual(summary.consoleErrors, [], 'browser console errors');
   console.log(JSON.stringify(summary, null, 2));
 } finally {

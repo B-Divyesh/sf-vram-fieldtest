@@ -5,17 +5,18 @@ import { readFileSync } from 'node:fs';
 
 let sourceCommit;
 try {
-  sourceCommit = execFileSync('git', ['rev-parse', 'v0.1.10^{commit}'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  sourceCommit = execFileSync('git', ['rev-parse', 'v0.1.11^{commit}'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 } catch {
   sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 }
 
 const releaseFixture = {
-  tag_name: 'v0.1.10',
+  tag_name: 'v0.1.11',
   assets: [
-    { name: 'vram-fieldtest-linux-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.10/vram-fieldtest-linux-x86_64.tar.gz' },
-    { name: 'vram-fieldtest-windows-x86_64.zip', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.10/vram-fieldtest-windows-x86_64.zip' },
-    { name: 'vram-fieldtest-macos-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.10/vram-fieldtest-macos-x86_64.tar.gz' },
+    { name: 'vram-fieldtest-linux-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.11/vram-fieldtest-linux-x86_64.tar.gz' },
+    { name: 'vram-fieldtest-windows-x86_64.zip', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.11/vram-fieldtest-windows-x86_64.zip' },
+    { name: 'vram-fieldtest-macos-x86_64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.11/vram-fieldtest-macos-x86_64.tar.gz' },
+    { name: 'vram-fieldtest-macos-aarch64.tar.gz', size: 2_100_000, browser_download_url: 'https://github.com/B-Divyesh/sf-vram-fieldtest/releases/download/v0.1.11/vram-fieldtest-macos-aarch64.tar.gz' },
     { name: 'SHA256SUMS', size: 800, browser_download_url: 'https://github.com/example/SHA256SUMS' },
     { name: 'latest.json', size: 800, browser_download_url: 'https://github.com/example/latest.json' },
     { name: 'PROVENANCE.json', size: 800, browser_download_url: 'https://github.com/example/PROVENANCE.json' }
@@ -27,12 +28,52 @@ test.beforeEach(async ({ page }) => {
   await page.route('https://api.github.com/repos/**/git/ref/tags/**', route => route.fulfill({ json: { object: { type: 'commit', sha: sourceCommit } } }));
 });
 
-test('@claim:release-download landing picks a real platform release asset', async ({ page }) => {
+test('@claim:release-download landing picks Windows and both Mac architecture releases', async ({ page, browser }) => {
   await page.goto('/');
   const download = page.getByRole('link', { name: 'Download for windows' });
   await expect(download).toBeVisible();
-  await expect(download).toHaveAttribute('href', /v0\.1\.10\/vram-fieldtest-windows-x86_64\.zip$/);
-  await expect(page.getByText('v0.1.10 · 2 MB')).toBeVisible();
+  await expect(download).toHaveAttribute('href', /v0\.1\.11\/vram-fieldtest-windows-x86_64\.zip$/);
+  await expect(page.getByText('v0.1.11 · 2 MB')).toBeVisible();
+
+  const intel = await browser.newContext();
+  const intelPage = await intel.newPage();
+  await intelPage.route('https://api.github.com/repos/**/releases/latest', route => route.fulfill({ json: releaseFixture }));
+  await intelPage.route('https://api.github.com/repos/**/git/ref/tags/**', route => route.fulfill({ json: { object: { type: 'commit', sha: sourceCommit } } }));
+  await intelPage.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' });
+    Object.defineProperty(navigator, 'userAgentData', { configurable: true, value: { getHighEntropyValues: async () => ({ architecture: 'x86' }) } });
+  });
+  await intelPage.goto('http://127.0.0.1:4173/');
+  await expect(intelPage.getByRole('link', { name: 'Download for Mac (Intel)' })).toHaveAttribute('href', /macos-x86_64\.tar\.gz$/);
+  await expect(intelPage.getByRole('link', { name: 'Download for Mac (Apple silicon)' })).toHaveCount(0);
+  await intel.close();
+
+  const arm = await browser.newContext();
+  const armPage = await arm.newPage();
+  await armPage.route('https://api.github.com/repos/**/releases/latest', route => route.fulfill({ json: releaseFixture }));
+  await armPage.route('https://api.github.com/repos/**/git/ref/tags/**', route => route.fulfill({ json: { object: { type: 'commit', sha: sourceCommit } } }));
+  await armPage.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' });
+    Object.defineProperty(navigator, 'userAgentData', { configurable: true, value: { getHighEntropyValues: async () => ({ architecture: 'arm' }) } });
+  });
+  await armPage.goto('http://127.0.0.1:4173/');
+  await expect(armPage.getByRole('link', { name: 'Download for Mac (Apple silicon)' })).toHaveAttribute('href', /macos-aarch64\.tar\.gz$/);
+  await expect(armPage.getByRole('link', { name: 'Download for Mac (Intel)' })).toHaveCount(0);
+  await arm.close();
+
+  const undecided = await browser.newContext();
+  const undecidedPage = await undecided.newPage();
+  await undecidedPage.route('https://api.github.com/repos/**/releases/latest', route => route.fulfill({ json: releaseFixture }));
+  await undecidedPage.route('https://api.github.com/repos/**/git/ref/tags/**', route => route.fulfill({ json: { object: { type: 'commit', sha: sourceCommit } } }));
+  await undecidedPage.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' });
+    Object.defineProperty(navigator, 'userAgentData', { configurable: true, value: undefined });
+  });
+  await undecidedPage.goto('http://127.0.0.1:4173/');
+  await expect(undecidedPage.getByText('Choose the Mac build that matches your processor.')).toBeVisible();
+  await expect(undecidedPage.getByRole('link', { name: 'Download for Mac (Apple silicon)' })).toHaveAttribute('href', /macos-aarch64\.tar\.gz$/);
+  await expect(undecidedPage.getByRole('link', { name: 'Download for Mac (Intel)' })).toHaveAttribute('href', /macos-x86_64\.tar\.gz$/);
+  await undecided.close();
 });
 
 test('@claim:host-evidence-scope the site and docs limit coverage evidence to completed user-host runs', async ({ page }) => {
@@ -57,8 +98,8 @@ test('release update replaces a fresh cache entry from the previous version', as
     data: { tag_name: 'v0.1.2', assets: [] }
   })));
   await page.goto('/');
-  await expect(page.getByRole('link', { name: 'Download for windows' })).toHaveAttribute('href', /v0\.1\.10\//);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('vram:release')).data.tag_name)).toBe('v0.1.10');
+  await expect(page.getByRole('link', { name: 'Download for windows' })).toHaveAttribute('href', /v0\.1\.11\//);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('vram:release')).data.tag_name)).toBe('v0.1.11');
 });
 
 test('regression: landing refuses an expected release tag from another commit', async ({ page }) => {
@@ -161,12 +202,12 @@ test('Report Kit replaces malformed JSON parser text with a recovery instruction
 
 test('@claim:report-kit-operator-gate Report Kit has no checkout until its Sociobot mapping is configured', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 2, name: 'Report Kit' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Report Kit — $19 one time' })).toBeVisible();
   await expect(page.getByText('Checkout is unavailable until an operator configures its Sociobot product mapping.')).toBeVisible();
   await expect(page.locator('a[href*="/checkout"]')).toHaveCount(0);
   await expect(page.getByText('The core test and report files stay free.')).toBeVisible();
   await page.goto('/report-kit');
-  await expect(page.getByRole('heading', { level: 2, name: 'Report Kit checkout is not available.' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Report Kit — $19 one time' })).toBeVisible();
   await expect(page.locator('a[href*="/checkout"]')).toHaveCount(0);
 });
 

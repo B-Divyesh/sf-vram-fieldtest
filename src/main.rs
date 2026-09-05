@@ -238,7 +238,7 @@ fn adapter_inspection(adapter: Adapter, reading: Option<&TelemetryReading>) -> A
         default_run_ready,
         temperature_provider: provider.clone(),
         safety_note: provider.map_or_else(
-            || "unavailable; the default run is blocked before test-memory allocation".into(),
+            || "unavailable; the default run is blocked before test-memory allocation. Supported providers are NVIDIA SMI and Linux DRM hwmon".into(),
             |name| format!("available from {name}"),
         ),
     }

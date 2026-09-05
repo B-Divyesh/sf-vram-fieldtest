@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.1.11 — 2026-09-05
+
+- Offer the matching Mac archive when architecture is known and both choices when it is not.
+- Publish the hero image under a fingerprinted, immutable-cached path.
+- Keep tagged CLI identity separate from later report-only site commits.
+- Verify Homebrew, Scoop, and winget artifacts through declared claim commands.
+- State the supported automatic temperature providers and the $19 one-time Report Kit offer.
+
 ## 0.1.10 — 2026-08-30
 
 - Report selected-adapter thermal readiness during `inspect`, for every vendor.

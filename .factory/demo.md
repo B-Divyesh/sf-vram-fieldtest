@@ -4,4 +4,4 @@
 - CLI command: `vram-fieldtest demo` or `cargo run -- demo --json`. It copies the bundled `examples/sample-report.json` into a process-specific temporary directory and creates `report.json` plus `report.html` there.
 - The CLI demo makes no network request. The browser demo requests only same-origin static files. It is safe for a verifier to run from a clean checkout.
 - The real `vram-fieldtest inspect` command detects adapters and VRAM values on the host where a user runs it. It tests that host only. Coverage figures come from completed user-provided runs.
-- `inspect` also reports whether the default thermal stop is ready for each adapter. A missing reading blocks the default run before test-memory allocation, including for non-NVIDIA adapters.
+- `inspect` also reports whether the default thermal stop is ready for each adapter. A missing reading blocks the default run before test-memory allocation. Safe runs currently use NVIDIA SMI or Linux DRM temperature data.

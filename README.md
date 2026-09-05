@@ -37,7 +37,8 @@ Windows and macOS builds are unsigned. SHA-256 checks verify file integrity; the
 Homebrew:
 
 ```sh
-brew install B-Divyesh/vram-fieldtest/vram-fieldtest
+brew tap B-Divyesh/sf-vram-fieldtest https://github.com/B-Divyesh/sf-vram-fieldtest
+brew install B-Divyesh/sf-vram-fieldtest/vram-fieldtest
 ```
 
 Scoop:
@@ -47,7 +48,7 @@ scoop bucket add vram-fieldtest https://github.com/B-Divyesh/sf-vram-fieldtest
 scoop install vram-fieldtest/vram-fieldtest
 ```
 
-The winget manifest is ready under `winget/` for owner submission.
+The winget manifest is ready under `winget/` for owner submission. Owner submission is still required before `winget install` works.
 
 ## Run a test
 
@@ -59,7 +60,7 @@ vram-fieldtest inspect
 
 `inspect` lists each adapter visible to that host with an index. It shows any memory value the local driver exposes. It does not use a remote lab or invent a value.
 
-For every GPU vendor, `inspect` reports whether the default thermal stop is ready. If the selected card has no temperature reading, the default run is blocked before test-memory allocation. This includes AMD and Intel adapters on systems whose drivers expose memory but not temperature.
+`inspect` reports whether the default thermal stop is ready for each detected card. If the selected card has no temperature reading, the run is blocked before test-memory allocation.
 
 Run only with working cooling and a clear view of the machine:
 
@@ -69,7 +70,9 @@ vram-fieldtest run --yes --adapter 0 --output ./gpu-record
 
 `--yes` confirms that you want to start a compute memory test. If you omit `--mib`, the tool derives a request from VRAM reported on that host.
 
-The CLI starts only when it can read the selected card's temperature. It stops at 85°C or when that reading disappears. Some local drivers do not expose a usable selected-card reading. The default run refuses to start on those hosts.
+Safe hardware runs currently require NVIDIA SMI or Linux DRM temperature data. Other Windows and macOS cards can use `inspect`, `plan`, and `demo`. Their default memory run stays blocked.
+
+The CLI starts only when it can read the selected card's temperature. It stops at 85°C or when that reading disappears.
 
 `--allow-no-thermal-stop` is an unsafe override. It disables the automatic thermal stop and requires manual monitoring.
 
@@ -142,4 +145,4 @@ python3 scripts/hardware-evidence.py validate \
 
 MIT. See [LICENSE](LICENSE). Read the site [privacy](https://vram-fieldtest.sociobot.in/privacy) and [terms](https://vram-fieldtest.sociobot.in/terms).
 
-Report Kit turns a local report into a printable cover and three batch labels. Checkout is disabled until an operator configures its Sociobot product mapping. The core test and report files stay free.
+Report Kit costs $19 once. It turns a local report into a printable cover and three batch labels. Checkout is disabled until an operator configures its Sociobot product mapping. The core test and report files stay free.

@@ -29,6 +29,8 @@ jobs:
           test "$GITHUB_REF_NAME" = "v${version}"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Test, build, and strict lint
+        env:
+          VRAM_PACKAGE_TEST_MODE: prepublish
         run: npm test && npm run build && npm run lint
 
   protocol_smoke:
@@ -209,3 +211,14 @@ jobs:
           jq -e --arg commit "$GITHUB_SHA" '.source_commit == $commit' published-check/PROVENANCE.json >/dev/null
           jq -e --arg commit "$GITHUB_SHA" '.evidence_kind == "package-release" and .source_commit == $commit and (.note | contains("coverage figures come from completed user-provided runs"))' published-check/PROVENANCE.json >/dev/null
           jq -e --arg commit "$GITHUB_SHA" --arg version "${GITHUB_REF_NAME#v}" '.source_commit == $commit and .version == $version and ([.assets[] | contains("/releases/download/v" + $version + "/")] | all)' published-check/latest.json >/dev/null
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify public package-manager claims after publication
+        run: |
+          npm ci
+          npm test -- --grep @claim:homebrew-install
+          npm test -- --grep @claim:scoop-install
+          npm test -- --grep @claim:winget-manifest
