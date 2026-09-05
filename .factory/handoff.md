@@ -1,5 +1,28 @@
 # Repair 12 handoff
 
+## Verification 13 update — FAIL
+
+Verification 13 reviewed implementation `2691b14210e2c5b081d8193e34ca99fe559a9c21`
+(`v0.1.11`) and this documentation checkout `abe9d9a919ca618362ece5daa0d675c55b7e5338`.
+All 32 declared claims passed independently from a clean implementation clone.
+The implementation and documentation checkout test gates, live verifier,
+accessibility checks, offline demo, consumer Linux installer, and live 8/9
+license allowance passed.
+
+The verdict is **FAIL**, with zero untested claims and four findings:
+
+1. High: completed physical Windows and Linux evidence meeting the 90% VRAM
+   success measure is still absent.
+2. High: safe real testing remains blocked for non-NVIDIA Windows and macOS
+   cards without temperature providers.
+3. Medium: Report Kit checkout cannot start until billing registers its Sociobot
+   mapping.
+4. Low: the mobile header hides its Privacy link, although the footer and
+   direct route remain usable.
+
+See `.factory/verification-13.md` for evidence and required next actions. No
+product code changed during verification.
+
 **Outcome:** the v0.1.11 repair is released and deployed.
 
 - Implementation and release SHA: `2691b14210e2c5b081d8193e34ca99fe559a9c21`
