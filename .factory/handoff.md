@@ -1,4 +1,31 @@
-# Verification 12 handoff — PASS
+# Review 2 handoff — FAIL
+
+**Implementation reviewed:** `9c5cdd53e90b98cf895a85e2a94b719881202c45`
+(`v0.1.10`)
+
+**Documentation SHA:** `430837f7ee1d7e72d42b7d6198015d0f88c3cc95`
+
+**Live URL:** <https://vram-fieldtest.sociobot.in>
+
+Strict review 2 found 7 defects: 2 High, 4 Medium, and 1 Low. It also found
+three unregistered public package-manager installation paths. The unambiguous
+verdict is **FAIL**. See `.factory/review-2.md` for full evidence.
+
+All 29 declared claim commands passed independently. The tagged implementation
+passed its complete suite, Cargo tests, lint, build, package, browser,
+accessibility, privacy, installer, and CLI boundary checks. The live site is
+byte-for-byte the tagged implementation and the license endpoint returned 429
+with `Retry-After` on request nine.
+
+Open items are the absent physical Windows/Linux ≥90% result, incomplete safe
+telemetry support for non-NVIDIA Windows/macOS, unavailable one-time checkout,
+report-only SHA failures in `npm test` and `verify:live`, an ARM download offered
+to Intel Mac browsers, a stale public Homebrew tap, and the 30-second hero cache.
+No product code was changed during this review.
+
+---
+
+# Verification 12 handoff — PASS (historical)
 
 **Verified candidate:** `9c5cdd53e90b98cf895a85e2a94b719881202c45` (`v0.1.10`)
 **Live URL:** <https://vram-fieldtest.sociobot.in>
