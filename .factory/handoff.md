@@ -1,163 +1,120 @@
-# Review 2 handoff — FAIL
+# Repair 12 handoff
 
-**Implementation reviewed:** `9c5cdd53e90b98cf895a85e2a94b719881202c45`
-(`v0.1.10`)
+**Outcome:** the v0.1.11 repair is released and deployed.
 
-**Documentation SHA:** `430837f7ee1d7e72d42b7d6198015d0f88c3cc95`
+- Implementation and release SHA: `2691b14210e2c5b081d8193e34ca99fe559a9c21`
+- Release: `v0.1.11`
+- Live URL: <https://vram-fieldtest.sociobot.in>
+- Documentation SHA: the final report-only `main` commit that contains this file; it is intentionally later than the implementation SHA and is recorded in the completion response.
+- Deployment ID: `5c0bcf40-428a-4083-b6ab-6dd096f4f00f`
 
-**Live URL:** <https://vram-fieldtest.sociobot.in>
+## What changed
 
-Strict review 2 found 7 defects: 2 High, 4 Medium, and 1 Low. It also found
-three unregistered public package-manager installation paths. The unambiguous
-verdict is **FAIL**. See `.factory/review-2.md` for full evidence.
+Repair 12 closes the locally repairable findings in `.factory/review-2.md`:
 
-All 29 declared claim commands passed independently. The tagged implementation
-passed its complete suite, Cargo tests, lint, build, package, browser,
-accessibility, privacy, installer, and CLI boundary checks. The live site is
-byte-for-byte the tagged implementation and the license endpoint returned 429
-with `Retry-After` on request nine.
+- Release identity now separates the tagged CLI source from later report-only site commits. Clean tests and live verification no longer demand a needless product rebuild for documentation-only changes.
+- Mac downloads select Intel or Apple silicon when the browser reports an architecture. Browsers that do not report it show both clearly labelled choices.
+- Homebrew, Scoop, and winget each have a declared claim command. The tests resolve their public v0.1.11 assets, verify SHA-256, extract them, and check the executable format.
+- The Homebrew instructions use this product repository as the tap. They no longer reference the stale separate tap.
+- The generated hero image is published at a content-hashed URL under the one-year immutable cache route.
+- Public copy states the safe real-run boundary. Automatic temperature stops currently use NVIDIA SMI or Linux DRM hwmon. Other Windows and macOS cards can inspect, plan, and run the sample, but their default memory run remains blocked.
+- The $19 one-time Report Kit offer remains intact. Checkout is withheld while its Sociobot mapping is absent; the free CLI and JSON/HTML reports are not gated.
+- Version, service-worker cache, installers, package manifests, and release metadata were advanced together to 0.1.11.
 
-Open items are the absent physical Windows/Linux ≥90% result, incomplete safe
-telemetry support for non-NVIDIA Windows/macOS, unavailable one-time checkout,
-report-only SHA failures in `npm test` and `verify:live`, an ARM download offered
-to Intel Mac browsers, a stale public Homebrew tap, and the 30-second hero cache.
-No product code was changed during this review.
+## Review 2 finding disposition
 
----
+| Finding | Disposition |
+| --- | --- |
+| R2-1 physical Windows/Linux result | External evidence dependency remains. This worker has no GPU. The release makes no lab-result claim and attributes coverage only to a completed user-host run. |
+| R2-2 safe cross-vendor paths | Public support is narrowed to the automatic temperature providers that exist. A missing selected-card temperature blocks allocation by default. |
+| R2-3 one-time checkout | Operator dependency remains. The live checkout endpoint returns 404, so the site exposes no broken buy link. Public registration metadata is at `/work/.evidence/billing-offer.json`. |
+| R2-4 report-only SHA test failures | Closed. Source identity follows `v0.1.11`; site identity may be a later documentation-only descendant. |
+| R2-5 wrong Mac architecture | Closed for reported Intel, reported Apple silicon, and unknown architecture. |
+| R2-6 untested package-manager paths and stale tap | Closed with three declared public-asset claims and self-repository Homebrew tap instructions. |
+| R2-7 30-second hero cache | Closed. Live hashed hero returns `Cache-Control: public, max-age=31536000, immutable`. |
 
-# Verification 12 handoff — PASS (historical)
+## Earlier finding disposition
 
-**Verified candidate:** `9c5cdd53e90b98cf895a85e2a94b719881202c45` (`v0.1.10`)
-**Live URL:** <https://vram-fieldtest.sociobot.in>
+The retained regression suite also covers the earlier reused-allocation counter, unknown-memory fallback, Windows/Linux/macOS inventory, selected-adapter telemetry, disappearing/85°C stops, invalid 7,200-second workflow command, strict lint, candidate/release identity, demo storage isolation, touch targets, focus contrast, malformed Report Kit input, raw route metadata, mobile first action, real HTTP 404, offline reload, and installer checksum failures.
 
-Independent QA passed on 2026-08-30. `.factory/verification-12.md` contains
-the exact claim-gate, local, CLI consumer, browser, accessibility, privacy,
-release, and rate-limit evidence. The live `release.json` reports this exact
-source and site commit. All 29 declared claim commands and the complete suite
-passed; `cargo test --locked --all-targets`, lint, and the production build
-also passed.
+Windows and macOS packages remain unsigned. This is disclosed beside installation, and SHA-256 is described only as file-integrity evidence. Signing still needs operator certificates.
 
-The only finding is Low severity: the un-hashed hero image currently has a
-30-second cache lifetime. No Critical, High, or Medium defects were found.
-The verifier container has no physical GPU; no physical-memory result is
-claimed or inferred.
+## Clean verification
 
----
-
-# Repair 11 handoff (historical builder evidence)
-
-**Base verifier report:** `.factory/verification-11.md` at
-`469aa85a9d3d481c3ca01db3c8202ebf9910a2ea`
-
-**Release:** `v0.1.10`
-
-**Live URL:** <https://vram-fieldtest.sociobot.in>
-
-## Reproduction and repair
-
-The new `@claim:safe-non-nvidia-default` regression was run before the fix. It
-failed because Cargo selected zero tests: the candidate had no inspect-time
-safety contract for a non-NVIDIA adapter.
-
-- `inspect` now reports `default_run_ready`, the matched temperature provider,
-  and a plain safety note for every listed adapter.
-- AMD and Intel fixtures prove that missing selected-adapter temperature blocks
-  the default path before test-memory allocation. A fixture with temperature
-  proves that the same vendor-neutral path becomes ready.
-- The existing 85°C and disappearing-reading stops remain unchanged. The
-  explicit `--allow-no-thermal-stop` option remains labelled unsafe.
-- Public, README, demo, release-provenance, and claim text now says only that
-  the CLI detects and tests the local host. Coverage figures come from
-  completed user-provided runs. Release packages contain no factory GPU-lab
-  result.
-- The evidence helper is described as a schema and consistency checker for a
-  report the user provides. Its controlled fixtures are not presented as
-  hardware evidence.
-- Windows and macOS packages are plainly labelled unsigned. SHA-256 is
-  described only as byte-integrity verification, not publisher identity.
-- Report Kit checkout remains absent while the Sociobot product mapping is not
-  configured. The landing and Report Kit route have no checkout link; the
-  free CLI and JSON/HTML reports remain available.
-
-## Exact regression coverage
-
-- `npm test -- --grep @claim:safe-non-nvidia-default`
-- `npm test -- --grep @claim:selected-thermal-stop`
-- `npm test -- --grep @claim:host-evidence-scope`
-- `npm test -- --grep @claim:host-evidence-bundle`
-- `npm test -- --grep @claim:release-package-provenance`
-- `npm test -- --grep @claim:unsigned-builds`
-- `npm test -- --grep @claim:report-kit-operator-gate`
-
-`.factory/claims.json` contains 29 claims and the source contains exactly one
-matching `@claim:<id>` test for each claim.
-
-## Local verification
-
-- `npm ci --no-audit --no-fund` — passed; five packages installed.
-- `npm test` — passed: 31 Node/integration checks, one Windows-only local skip,
-  14 Rust tests, and 29 Playwright desktop/mobile checks.
-- `npm run lint` — passed JavaScript and Python syntax, shell syntax, Rust
-  formatting, and Clippy with warnings denied.
-- `npm run build` — passed; produced `dist/site` and
-  `target/release/vram-fieldtest`.
-- `cargo test --locked --all-targets` — 14 passed.
-- `cargo check --locked --all-targets` — passed.
-- `cargo package --locked --allow-dirty` — passed; 81 files, 2.7 MiB
-  uncompressed and 2.2 MiB compressed.
-- A fresh consumer installed the packaged crate. Its binary reported 0.1.10,
-  ran the demo with blocked proxy settings, planned 11,060 MiB for a 12,288
-  MiB host value, and returned the sandbox's empty adapter inventory.
-- `/opt/fleet/lib/verify-url.sh http://127.0.0.1:4173
-  artifacts/repair-11-verify` — passed in 636 ms with no console errors, one
-  h1, `lang=en`, a main landmark, complete image alt attributes, and labelled
-  buttons. Desktop and 390×844 screenshots are in that evidence folder.
-- Lighthouse 12.8.2 local mobile/default audit: performance 99,
-  accessibility 100, best practices 100, SEO 100; FCP 1.05 s, LCP 2.10 s,
-  TBT 34 ms, CLS 0.
-- Initial app JavaScript is 6,888 bytes gzip; all JavaScript including the
-  worker is 7,430 bytes gzip. CSS is 2,800 bytes gzip and the hero is 120,554
-  bytes. All remain below the product budgets.
-
-## Cross-platform package evidence
-
-- Clean build run
-  [33298183105](https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33298183105)
-  passed at `60f44a3b848d2411fb6bc4e3c685194ce2542554`, including the Windows
-  PowerShell good/tampered checksum regression.
-- Non-publishing release rehearsal
-  [33298191492](https://github.com/B-Divyesh/sf-vram-fieldtest/actions/runs/33298191492)
-  passed at the same commit. Linux and Windows software-renderer protocol
-  checks passed and are labelled as package checks with no hardware result.
-  Native Linux, Windows, Intel macOS, and Apple-silicon macOS builds passed.
-- Rehearsal archive SHA-256 values pinned into package-manager manifests:
-  - Windows x86_64: `6823b2fe6ae36eeb004e203ce3fd19f333e3da864f01cad326e537774ecc3914`
-  - macOS x86_64: `213b882c0edb05cb7b62a6c34d1499b06928fb2ced023b0df5812435b3d9ba66`
-  - macOS arm64: `84c995ce062cf48a75bfecaa4d93508b62a4f9ca9b81734b96dcbb36d4c0dd5d`
-
-## Release and deployment
-
-Tag this handoff commit as `v0.1.10`. The tag workflow publishes Linux,
-Windows, Intel macOS, and Apple-silicon macOS assets, `SHA256SUMS`,
-`latest.json`, and `PROVENANCE.json`. Build the site after the tag so
-`release.json` identifies the same source commit, then deploy only this static
-product:
+The documented setup was run from a fresh GitHub clone at the implementation SHA:
 
 ```sh
-npm run build:site
-/opt/fleet/lib/deploy-static.sh vram-fieldtest dist/site
-npm run verify:live -- https://vram-fieldtest.sociobot.in
+npm ci --no-audit --no-fund
+# every exact test command in .factory/claims.json, independently
+npm test
+npm run lint
+npm run build
+cargo test --locked --all-targets
+cargo check --locked --all-targets
+cargo package --locked
 ```
 
-## Honest limits
+Results:
 
-- This sandbox has no GPU. No physical-GPU coverage figure or external GPU
-  matrix is claimed. A coverage figure belongs only to the completed local run
-  that produced its report.
-- A non-NVIDIA host without selected-card temperature remains blocked by
-  default. The user can see that status in `inspect`; proceeding without the
-  automatic stop requires the explicit unsafe option and manual monitoring.
-- Windows and macOS packages are unsigned because no signing certificate is
-  available. Checksums verify downloaded bytes only.
-- New Report Kit purchases remain unavailable until its Sociobot product
-  mapping is configured and checked. The disabled state is fail-soft.
+- 32 of 32 declared claim commands passed.
+- Node/integration: 34 passed, one Windows-only local fixture skipped.
+- Rust: 14 passed.
+- Playwright: 29 passed.
+- Lint, production build, Cargo check, and the clean 88-file Cargo package passed.
+- `dist/site` and `target/release/vram-fieldtest` were produced.
+- GitHub clean-build run `33995228063` passed.
+- GitHub release run `33995237338` passed after publishing and checking the three package-manager claims.
+
+## Release and consumer verification
+
+The public v0.1.11 release is non-draft and contains Linux tar/deb/rpm, Windows zip, Intel and Apple-silicon macOS tar/pkg files, per-file checksums, `SHA256SUMS`, `latest.json`, and `PROVENANCE.json`.
+
+A fresh Linux consumer verified the public archive against `SHA256SUMS`, then ran:
+
+- `--version` and `--help`;
+- a network-blocked `demo --json`, which wrote a passing three-pattern JSON report and printable HTML;
+- `inspect --json` on this GPU-free host;
+- 12,288 MiB and 98,304 MiB planning cases;
+- missing-consent, invalid-coverage, and missing-adapter recovery paths with exit codes 1, 2, and 1.
+
+The deployed one-line shell installer independently checked the archive, installed v0.1.11 to a fresh directory, and ran the network-blocked demo.
+
+## Live web verification
+
+- `npm run verify:live -- https://vram-fieldtest.sociobot.in` passed landing, Demo, Report Kit, Privacy, Terms, and the deliberate HTTP 404.
+- All routes had one h1, a main landmark, no console/page errors, and no serious or critical axe findings.
+- `/opt/fleet/lib/verify-url.sh` passed in 666 ms with title, `lang=en`, image alt coverage, and labelled buttons.
+- Fresh desktop and 390 by 844 phone contexts showed the job, audience, and complete 49.5 px sample action before scrolling.
+- One click loaded Example GPU 12 GB, 93.8% sample coverage, and three patterns under the persistent demo banner.
+- Reset recreated only `demo:vram-fieldtest`. Start for real removed that key. A seeded real-data sentinel was unchanged.
+- The demo made only same-origin requests and reloaded offline after service-worker control.
+- Keyboard, route focus/back, 200% text, reduced motion, 44 px targets, and disclosure focus contrast passed.
+- The license endpoint returned 200 for checks 1 through 8. Check 9 returned 429 with `Retry-After: 598`.
+- The API stores no tenant or report state. Its rate bucket is deliberately process-local, so SQLite and restart persistence are not applicable to this static product.
+
+Live Lighthouse 12.8.2 mobile scores: performance 100, accessibility 100, best practices 100, SEO 100. FCP was 813 ms, LCP 1,398 ms, TBT 36 ms, and CLS 0.
+
+Built budgets:
+
+- Initial app JavaScript: 7,315 bytes gzip.
+- All JavaScript including the worker: 7,867 bytes gzip.
+- CSS: 2,546 bytes gzip.
+- Hero image: 120,554 bytes.
+
+## Evidence
+
+- `/work/.evidence/repair-12-clean.log`
+- `/work/.evidence/repair-12-local/`
+- `/work/.evidence/repair-12-live/`
+- `/work/.evidence/catalog-description.txt`
+- `/work/.evidence/billing-offer.json`
+
+The catalog description is verb-first, 65 characters before its newline, and matches `.factory/catalog-description.txt`.
+
+## Remaining dependencies
+
+1. Run the tagged binary on physical Windows and Linux GPUs and publish completed reports with detected VRAM, at least 90% coverage, three completed patterns, retained allocations, and selected-card telemetry. No physical result is claimed here.
+2. The billing operator must register and verify the Report Kit offer before enabling the buy link. The exact product origin is `https://vram-fieldtest.sociobot.in`; the current checkout endpoint returns 404.
+3. Add safe Windows AMD/Intel and macOS temperature providers before expanding default real-run support beyond NVIDIA SMI and Linux DRM hwmon.
+4. Add macOS and Windows signing certificates when available. Until then, those packages remain clearly labelled unsigned.
+5. The owner must submit the prepared winget manifest before `winget install` is publicly available.
